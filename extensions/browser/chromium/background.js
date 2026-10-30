@@ -103,15 +103,44 @@ chrome.downloads.onCreated.addListener(async (item) => {
   });
 });
 
+const MEDIA_PATTERN = /\.(m3u8|mpd)(\?|#|$)/i;
+
+// Observational sniffing: remember the last manifest URL per tab so the
+// context menu can hand it over even when the player loaded it in script.
+chrome.webRequest.onBeforeRequest.addListener(
+  (details) => {
+    if (details.tabId < 0 || !MEDIA_PATTERN.test(details.url)) return;
+    chrome.storage.session.set({ [`media:${details.tabId}`]: details.url });
+  },
+  { urls: ["<all_urls>"] },
+);
+
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
     id: "downpour-link",
     title: "Download with Downpour",
     contexts: ["link", "video", "audio"],
   });
+  chrome.contextMenus.create({
+    id: "downpour-media",
+    title: "Download media with Downpour",
+    contexts: ["page", "video", "audio"],
+  });
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId === "downpour-media") {
+    if (!tab || tab.id === undefined) return;
+    const key = `media:${tab.id}`;
+    chrome.storage.session.get([key], (data) => {
+      const mediaUrl = data[key];
+      if (mediaUrl) {
+        void takeOver({ url: mediaUrl, referer: tab.url });
+      }
+    });
+    return;
+  }
+
   const url = info.linkUrl || info.srcUrl;
   if (url) {
     void takeOver({ url, referer: tab && tab.url });

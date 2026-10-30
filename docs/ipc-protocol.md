@@ -58,6 +58,9 @@ may process concurrently but responses carry the id.
 
 `cookie_header` is split into cookies and passed to the engine as ephemeral
 headers: they are used for this process only and never written to SQLite.
+HLS/DASH URLs are routed to the media pipeline (yt-dlp when installed, native
+HLS fallback otherwise); `cookie_header` is also written to a 0600 cookie file
+for yt-dlp.
 
 ### Planned
 

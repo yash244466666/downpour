@@ -1,17 +1,19 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { CalendarClock, Gauge, FolderOpen, ListOrdered, Settings as SettingsIcon, X } from "lucide-react";
-import type { Settings } from "../lib/engine";
+import type { MediaTools, Settings } from "../lib/engine";
 import { cn } from "../lib/utils";
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export function SettingsDialog({
   settings,
+  mediaTools,
   onClose,
   onSave,
 }: {
   settings: Settings;
+  mediaTools: MediaTools | null;
   onClose: () => void;
   onSave: (settings: Settings) => void;
 }) {
@@ -285,6 +287,26 @@ export function SettingsDialog({
             <p className="mt-2 text-[10px] leading-relaxed text-muted">
               Outside the window, running downloads pause and queued ones wait.
             </p>
+          </section>
+
+          <section className="rounded-xl border border-line px-3 py-2.5">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
+              Media tools
+            </div>
+            <div className="mt-1.5 space-y-1 text-[11px] text-muted">
+              <div>
+                yt-dlp:{" "}
+                {mediaTools?.ytDlp
+                  ? `found at ${mediaTools.ytDlp}`
+                  : "not found — HLS uses the built-in fallback; DASH needs yt-dlp"}
+              </div>
+              <div>
+                ffmpeg:{" "}
+                {mediaTools?.ffmpeg
+                  ? `found at ${mediaTools.ffmpeg}`
+                  : "not found — detected only, never bundled"}
+              </div>
+            </div>
           </section>
 
           <section className="flex items-center justify-between rounded-xl border border-line px-3 py-2.5">

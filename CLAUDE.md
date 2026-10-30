@@ -1,7 +1,7 @@
 # CLAUDE.md — Downpour
 
 > Project context for Claude Code. Read this before changing anything.
-> Last updated: 2026-10-31 (M5 complete).
+> Last updated: 2026-10-31 (M6 complete).
 
 ## 1. What this is
 
@@ -10,12 +10,13 @@ manager in the IDM class: 1–32 parallel connections per file, crash-safe resum
 queues, scheduler, bandwidth throttling, browser download take-over, media
 grabbing (HLS/DASH/yt-dlp), and a site grabber — wrapped in a modern dashboard.
 
-**Current status: M5 complete.** Downloads, the dashboard, the queue, and
-browser take-over are live. Do not describe unfinished features as working.
+**Current status: M6 complete.** Downloads, the dashboard, queue, browser
+take-over, and media handling are live. Do not describe unfinished features
+as working.
 
 | Area | State |
 |---|---|
-| Rust workspace | Compiles; 101 tests pass; clippy `-D warnings` clean |
+| Rust workspace | Compiles; 110 tests pass; clippy `-D warnings` clean |
 | Shared types / IPC contract | DTOs, error codes, framing, handshake types |
 | SQLite schema + migrations | Initial schema, WAL, STRICT tables, download queries |
 | Segment planner / filename safety | Planner exists but drives M2; filename hardening live |
@@ -31,7 +32,8 @@ browser take-over are live. Do not describe unfinished features as working.
 | Queue / scheduler | Concurrency + per-host caps, priorities, schedule window |
 | Startup | Autostart toggle and single-instance focus |
 | Frontend tests | 20 Vitest unit tests (formatting, filters, mapping) |
-| Media / grabber | Classification + batch-pattern expansion only (M6/M7) |
+| Media | HLS parser/downloader, AES-128, yt-dlp detection/run; DASH via yt-dlp |
+| Grabber | Batch-pattern expansion only (M7) |
 | Packaging / signing / updater | Tauri shell + icons; no release workflow |
 
 If your task touches an unimplemented area, the milestone that owns it is in
@@ -262,9 +264,9 @@ pnpm --dir apps/desktop build
 - Crash tests use a spawned CLI process + SIGKILL (`taskkill /F` on Windows)
   and compare SHA-256 against the source.
 - UI tests currently stop at typecheck/build; Vitest + Playwright land with M3.
-- Current total: **101 Rust tests** (42 core, 22 engine integration, 1 CLI
-  crash, 6 store, 6 testkit, 4 types, 6 IPC transport/protocol, plus
-  media/grabber/native-host units) and **20 frontend tests** (Vitest).
+- Current total: **110 Rust tests** (42 core, 22 engine integration, 1 CLI
+  crash, 6 store, 6 testkit, 4 types, 6 IPC transport/protocol, 11 media,
+  plus grabber/native-host units) and **20 frontend tests** (Vitest).
 - Never add a test that downloads from the public internet.
 
 ## 11. Milestones
@@ -279,8 +281,8 @@ Full detail in `docs/roadmap.md`.
 | M3 | Full UI wired to engine, tray, notifications, settings | ✅ |
 | M4 | Queue, scheduler, categories, autostart, single-instance | ✅ |
 | M5 | IPC server/client, native host, Chromium/Edge extension | ✅ |
-| M6 | yt-dlp, media detection, HLS fallback | next |
-| M7 | Site grabber, batch import | |
+| M6 | yt-dlp, media detection, HLS fallback | ✅ |
+| M7 | Site grabber, batch import | next |
 | M8 | Packaging, signing, notarization, release CI | |
 | M9 | Accessibility, i18n, diagnostics, docs | |
 
@@ -306,9 +308,15 @@ native-messaging host registered by the CLI, and a Chromium/Edge extension that
 takes over downloads and hands over cookies, referer, and user agent. Firefox
 and Safari extensions are not shipped.
 
-**M6 exit criteria:** media URLs are detected (HLS manifests + direct media),
-yt-dlp can be configured and run with cookie handoff, and an HLS fallback
-downloads a stream with quality selection.
+**M6 exit criteria (met):** media URLs are detected (HLS/DASH/progressive),
+yt-dlp is detected and runs with cookie handoff, and the built-in HLS fallback
+downloads a stream (highest variant, AES-128, SAMPLE-AES refused). Managed
+yt-dlp auto-download and user-facing quality selection are **not** shipped;
+DASH requires yt-dlp.
+
+**M7 exit criteria:** a robots-aware, rate-limited site grabber with depth and
+page caps, link extraction, a persisted frontier, and batch URL import with
+pattern expansion.
 
 ## 12. Branching and releases
 
@@ -358,6 +366,12 @@ the grabber:
   persist them; the SQLite `headers_enc` keyring path is still TODO.
 - The Chromium extension ID (`CHROME_EXTENSION_ID` in the CLI) must match the
   `key` in `extensions/browser/chromium/manifest.json`.
+- Media jobs update the same `downloads` rows but are not engine transfers:
+  pausing kills the process and resuming restarts it from zero. HLS/DASH URLs
+  are routed by `queue_add`; DASH needs yt-dlp. `DOWNPOUR_DISABLE_YTDLP=1`
+  forces the built-in HLS path.
+- Media tasks must not hold a SQLite `Store` across an await (the future must
+  stay `Send`); open it for short updates only.
 - The desktop scheduler ticks every 1.5 s, starts **queued** downloads only
   (never paused ones) within concurrency/per-host limits, and pauses running
   transfers outside the schedule window. Do not auto-start paused rows; that

@@ -16,9 +16,13 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 downpour-core = { path = "../../../crates/downpour-core" }
 downpour-ipc = { path = "../../../crates/downpour-ipc" }
+downpour-media = { path = "../../../crates/downpour-media" }
 downpour-store = { path = "../../../crates/downpour-store" }
 downpour-types = { path = "../../../crates/downpour-types" }
 chrono.workspace = true
+hex.workspace = true
+reqwest.workspace = true
+sha2.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tauri = { version = "2", features = ["tray-icon"] }

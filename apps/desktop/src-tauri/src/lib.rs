@@ -26,6 +26,8 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_autostart::ManagerExt;
 use tokio::io::BufReader;
 
+mod media;
+
 struct AppState {
     db_path: PathBuf,
     config: Mutex<EngineConfig>,
@@ -166,23 +168,75 @@ async fn add_download(
     connections: Option<u16>,
     start_now: bool,
 ) -> Result<String, String> {
-    let mut engine = open_engine(&state)?;
-    let id = engine
-        .add(AddDownloadRequest {
+    let _ = &state;
+    queue_add(
+        &app,
+        AddDownloadRequest {
             url,
             file_name: name,
             dest_dir: directory,
             connections,
             start_immediately: start_now,
             ..AddDownloadRequest::default()
-        })
-        .map_err(|error| error.to_string())?;
+        },
+        start_now,
+        None,
+    )
+}
+
+/// Queue a download and route HLS/DASH to the media pipeline.
+fn queue_add(
+    app: &AppHandle,
+    mut request: AddDownloadRequest,
+    start_now: bool,
+    cookie_header: Option<String>,
+) -> Result<String, String> {
+    let url = request.url.clone();
+    let kind = downpour_media::classify_url(&url).filter(|kind| {
+        matches!(
+            kind,
+            downpour_media::MediaKind::Hls | downpour_media::MediaKind::Dash
+        )
+    });
+
+    if kind.is_some() && request.file_name.is_none() {
+        if let Ok(parsed) = url::Url::parse(&url) {
+            let name = downpour_core::probe::filename_from_url(&parsed)
+                .unwrap_or_else(|| "video".to_owned());
+            let stem = name.rsplit_once('.').map(|(stem, _)| stem).unwrap_or(&name);
+            request.file_name = Some(format!("{stem}.mp4"));
+        }
+    }
+
+    let state = app.state::<AppState>();
+    let mut engine = open_engine(&state)?;
+    let id = engine.add(request).map_err(|error| error.to_string())?;
 
     if start_now {
-        start_run(&app, &id.to_string())?;
+        if let Some(kind) = kind {
+            media::start_media(app, id, url, kind, cookie_header)?;
+        } else {
+            start_run(app, &id.to_string())?;
+        }
     }
     let _ = app.emit("downloads-changed", ());
     Ok(id.to_string())
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MediaTools {
+    yt_dlp: Option<String>,
+    ffmpeg: Option<String>,
+}
+
+#[tauri::command]
+fn get_media_tools() -> MediaTools {
+    let tools = downpour_media::detect_tools();
+    MediaTools {
+        yt_dlp: tools.yt_dlp.map(|path| path.display().to_string()),
+        ffmpeg: tools.ffmpeg.map(|path| path.display().to_string()),
+    }
 }
 
 #[tauri::command]
@@ -698,29 +752,29 @@ fn ipc_dispatch(app: &AppHandle, request: &Request) -> Response {
                 .as_deref()
                 .map(parse_cookie_header)
                 .unwrap_or_default();
-            let download_id = match engine.add(AddDownloadRequest {
-                url: params.url,
-                file_name: params.name,
-                dest_dir: params.directory,
-                connections: params.connections,
-                referer: params.referer,
-                user_agent: params.user_agent,
-                cookies,
-                ephemeral_headers: params.headers,
-                start_immediately: params.start_now,
-                source: DownloadSource::BrowserExtension,
-                ..AddDownloadRequest::default()
-            }) {
-                Ok(download_id) => download_id,
-                Err(error) => return ipc_error(id, error.to_string()),
-            };
-            if params.start_now {
-                if let Err(error) = start_run(app, &download_id.to_string()) {
-                    return ipc_error(id, error);
-                }
+            let _ = &mut engine;
+            let cookie_header = params.cookie_header.clone();
+            match queue_add(
+                app,
+                AddDownloadRequest {
+                    url: params.url,
+                    file_name: params.name,
+                    dest_dir: params.directory,
+                    connections: params.connections,
+                    referer: params.referer,
+                    user_agent: params.user_agent,
+                    cookies,
+                    ephemeral_headers: params.headers,
+                    start_immediately: params.start_now,
+                    source: DownloadSource::BrowserExtension,
+                    ..AddDownloadRequest::default()
+                },
+                params.start_now,
+                cookie_header,
+            ) {
+                Ok(download_id) => Response::ok(id, serde_json::json!({ "id": download_id })),
+                Err(error) => ipc_error(id, error),
             }
-            let _ = app.emit("downloads-changed", ());
-            Response::ok(id, serde_json::json!({ "id": download_id.to_string() }))
         }
         "download.pause" => ipc_id_method(app, request, |state, parsed, raw| {
             if let Some(handle) = lock(&state.running).get(raw).cloned() {
@@ -962,6 +1016,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             engine_info,
+            get_media_tools,
             list_downloads,
             add_download,
             start_download,

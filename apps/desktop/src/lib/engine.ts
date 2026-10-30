@@ -8,6 +8,11 @@ export interface EngineInfo {
   arch: string;
 }
 
+export interface MediaTools {
+  ytDlp: string | null;
+  ffmpeg: string | null;
+}
+
 export interface Settings {
   downloadDir: string;
   connections: number;
@@ -29,6 +34,10 @@ export async function fetchEngineInfo(): Promise<EngineInfo | null> {
     // Browser preview (vite dev without Tauri).
     return null;
   }
+}
+
+export async function getMediaTools(): Promise<MediaTools> {
+  return invoke<MediaTools>("get_media_tools");
 }
 
 export async function listDownloads(): Promise<EngineDownload[]> {

@@ -12,8 +12,8 @@ Status as of 2026-10-31.
 | **M5** | IPC server/client, native-messaging host, Chromium/Edge extension takeover | ✅ complete |
 | **M6** | yt-dlp integration, media detection UI, HLS fallback | ✅ complete |
 | **M7** | Site grabber + batch import/expansion | ✅ complete |
-| **M8** | Packaging: NSIS per-user, universal DMG, AppImage/deb/rpm; signing/notarization; release CI | ⏳ next |
-| **M9** | Hardening: accessibility, i18n, `downpour doctor`, docs | ⬜ |
+| **M8** | Packaging: deb/AppImage/NSIS/DMG, release workflow, signing hooks | ✅ complete |
+| **M9** | Diagnostics, accessibility, docs (i18n deferred) | ✅ complete |
 
 ## Definition of done for M0
 

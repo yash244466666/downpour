@@ -18,3 +18,7 @@ downpour-store = { path = "../../crates/downpour-store" }
 downpour-types = { path = "../../crates/downpour-types" }
 serde_json.workspace = true
 tokio.workspace = true
+
+[dev-dependencies]
+downpour-testkit = { path = "../../crates/downpour-testkit" }
+tempfile.workspace = true

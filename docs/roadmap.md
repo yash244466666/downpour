@@ -6,8 +6,8 @@ Status as of 2026-10-30.
 |---|---|---|
 | **M0** | Workspace, types/store, Tauri shell, dashboard preview, testkit skeleton, CI, docs, licenses | ✅ complete |
 | **M1** | Single-stream engine: probe, temp file, SQLite journal, resume, pause, CLI | ✅ complete |
-| **M2** | Multi-connection planner, work-stealing, throttle, retries, kill-9 crash tests | ⏳ next |
-| **M3** | Full desktop UI wired to the engine: table, detail graph, settings, tray, notifications | ⬜ |
+| **M2** | Multi-connection transfers, dynamic segmentation, throttle, retries, kill-9 crash tests | ✅ complete |
+| **M3** | Full desktop UI wired to the engine: table, detail graph, settings, tray, notifications | ⏳ next |
 | **M4** | Queue, priorities, categories/rules, scheduler, autostart, single-instance, updater wiring | ⬜ |
 | **M5** | IPC server/client, native-messaging host, Chromium/Edge extension takeover | ⬜ |
 | **M6** | yt-dlp integration, media detection UI, HLS fallback | ⬜ |
@@ -42,15 +42,26 @@ Status as of 2026-10-30.
 Evidence: `cargo test --workspace` (78 tests) plus a CLI smoke run that paused
 a 20 MiB download at ~36%, resumed it, and matched the server's SHA-256.
 
-## Next: M2 acceptance
+## Definition of done for M2
 
-- Split range-capable transfers across up to 32 connections using the planner.
-- Work-stealing: an early finisher takes the tail of the slowest segment.
-- Global and per-download bandwidth throttling with a byte-rate token bucket.
-- Retry policy hardening: per-segment retries, `Retry-After`, jitter cap.
-- `kill -9` crash tests at randomized offsets, including around checkpoint and
-  finalize boundaries; SHA-256 must match after resume.
-- Concurrency across downloads is **not** part of M2; it lands with the queue.
+- [x] Range-capable transfers split across up to 32 workers.
+- [x] Dynamic segmentation: a shared queue finer than the worker count, so an
+      early finisher pulls another range (no idle connections).
+- [x] Global and per-download byte-rate throttling with a token bucket.
+- [x] Per-segment retries with `Retry-After` and jittered backoff.
+- [x] A real `SIGKILL` mid-transfer test that resumes to a byte-exact file.
+- [x] Multi-connection observed at the server: several distinct range starts.
+
+Concurrency across downloads is **not** part of M2; it lands with the queue.
+
+## Next: M3 acceptance
+
+- The dashboard lists real downloads from the engine (no mock data).
+- Add, pause, resume, cancel, and remove work from the UI.
+- Detail view with per-segment progress and speed.
+- Settings persist to SQLite; theme and defaults survive restarts.
+- Tray icon, notifications, and close-to-tray behavior.
+- UI tests (Vitest) for formatting, filters, and dialog validation.
 
 ## Lean MVP cut line
 

@@ -11,6 +11,11 @@ pub const MAX_SEGMENT_BYTES: u64 = 16 * 1024 * 1024;
 /// Below this, many connections cost more than they save.
 pub const MIN_MULTI_CONNECTION_BYTES: u64 = 2 * 1024 * 1024;
 pub const MAX_CONNECTIONS: u16 = 32;
+/// Upper bound on segment rows per download.
+pub const MAX_SEGMENTS: usize = 128;
+/// Work segments per connection: finer than the worker count so a fast worker
+/// can pull another range.
+const SEGMENTS_PER_CONNECTION: u64 = 3;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TransferPlan {
@@ -77,6 +82,44 @@ pub fn plan_transfer(
     }
 
     TransferPlan::Segmented(segments)
+}
+
+/// Plan the work list for a range-capable transfer.
+///
+/// Produces more segments than connections (when the file is large enough) so
+/// workers pull from a shared queue: an early finisher takes another range
+/// instead of idling. Segments always tile `[0, total)` exactly.
+#[must_use]
+pub fn plan_segments(total_bytes: u64, requested_connections: u16) -> Vec<SegmentSpec> {
+    if total_bytes == 0 {
+        return Vec::new();
+    }
+
+    let connections = u64::from(requested_connections.clamp(1, MAX_CONNECTIONS));
+    if total_bytes < MIN_MULTI_CONNECTION_BYTES || connections <= 1 {
+        return vec![SegmentSpec::new(0, 0, total_bytes - 1)];
+    }
+
+    let by_min_size = total_bytes.div_ceil(MIN_SEGMENT_BYTES).max(1);
+    let desired = (connections * SEGMENTS_PER_CONNECTION)
+        .min(by_min_size)
+        .min(MAX_SEGMENTS as u64)
+        .max(connections.min(by_min_size))
+        .max(1);
+
+    let per_segment = total_bytes.div_ceil(desired);
+    let mut segments = Vec::with_capacity(desired as usize);
+    let mut start = 0_u64;
+    let mut index = 0_u32;
+
+    while start < total_bytes {
+        let end = (start + per_segment).min(total_bytes) - 1;
+        segments.push(SegmentSpec::new(index, start, end));
+        start = end + 1;
+        index += 1;
+    }
+
+    segments
 }
 
 #[cfg(test)]
@@ -176,7 +219,38 @@ mod tests {
         }
     }
 
+    #[test]
+    fn work_plan_is_finer_than_connections() {
+        let total = 100 * 1024 * 1024;
+        let segments = plan_segments(total, 8);
+        assert_tiles(&segments, total);
+        assert!(segments.len() > 8);
+        assert!(segments.len() <= MAX_SEGMENTS);
+    }
+
+    #[test]
+    fn work_plan_keeps_one_stream_cases() {
+        assert_eq!(plan_segments(0, 8), Vec::new());
+        assert!(plan_segments(512 * 1024, 8).len() == 1);
+        assert!(plan_segments(100 * 1024 * 1024, 1).len() == 1);
+    }
+
     proptest::proptest! {
+        #[test]
+        fn work_plan_always_tiles(total in 0_u64..(8_u64 * 1024 * 1024 * 1024), conns in 1_u16..=32_u16) {
+            let segments = plan_segments(total, conns);
+            if total == 0 {
+                proptest::prop_assert!(segments.is_empty());
+            } else {
+                proptest::prop_assert_eq!(segments[0].start, 0);
+                proptest::prop_assert_eq!(segments.last().unwrap().end, total - 1);
+                proptest::prop_assert!(segments.len() <= MAX_SEGMENTS);
+                for pair in segments.windows(2) {
+                    proptest::prop_assert_eq!(pair[0].end + 1, pair[1].start);
+                }
+            }
+        }
+
         #[test]
         fn segments_always_tile(total in (MIN_MULTI_CONNECTION_BYTES..(8_u64 * 1024 * 1024 * 1024)), conns in 2_u16..=32_u16) {
             if let TransferPlan::Segmented(segments) = plan_transfer(Some(total), true, conns) {

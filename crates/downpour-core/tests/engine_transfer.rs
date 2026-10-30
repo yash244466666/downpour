@@ -29,10 +29,22 @@ fn test_engine(dir: &Path) -> Engine {
 }
 
 fn add(engine: &mut Engine, dir: &Path, url: String) -> downpour_types::DownloadId {
+    add_with(engine, dir, url, None, None)
+}
+
+fn add_with(
+    engine: &mut Engine,
+    dir: &Path,
+    url: String,
+    connections: Option<u16>,
+    speed_limit: Option<u64>,
+) -> downpour_types::DownloadId {
     engine
         .add(AddDownloadRequest {
             url,
             dest_dir: Some(dir.join("downloads").to_string_lossy().into_owned()),
+            connections,
+            speed_limit,
             ..AddDownloadRequest::default()
         })
         .expect("add")
@@ -505,6 +517,116 @@ async fn unsupported_scheme_is_rejected_at_add_time() {
         .expect_err("must reject");
 
     assert!(matches!(error, EngineError::UnsupportedScheme(_)));
+}
+
+#[tokio::test]
+async fn segmented_transfer_uses_multiple_connections() {
+    let server = TestServer::start().await.unwrap();
+    let temp = tempfile::tempdir().unwrap();
+    let mut engine = test_engine(temp.path());
+
+    let size = 4 * 1024 * 1024;
+    let id = add_with(
+        &mut engine,
+        temp.path(),
+        server.url(&format!("/slow/{size}/64/2")),
+        Some(4),
+        None,
+    );
+
+    assert_eq!(
+        engine.run(id, CancelToken::new(), None).await.unwrap(),
+        RunOutcome::Completed
+    );
+    assert_eq!(final_bytes(&engine, id), expected(size, 0));
+    assert_eq!(engine.get(id).unwrap().unwrap().connections, 4);
+
+    let ranges = server.ranges_seen();
+    let starts: std::collections::BTreeSet<String> = ranges
+        .iter()
+        .filter_map(|value| value.strip_prefix("bytes="))
+        .filter_map(|value| value.split('-').next())
+        .map(str::to_owned)
+        .collect();
+    assert!(
+        starts.len() >= 2,
+        "expected several range starts, saw {ranges:?}"
+    );
+    assert!(ranges.len() >= 4, "expected several range requests");
+
+    server.stop().await;
+}
+
+#[tokio::test]
+async fn segmented_transfer_pauses_and_resumes() {
+    let server = TestServer::start().await.unwrap();
+    let temp = tempfile::tempdir().unwrap();
+    let mut engine = test_engine(temp.path());
+
+    let size = 4 * 1024 * 1024;
+    let id = add_with(
+        &mut engine,
+        temp.path(),
+        server.url(&format!("/slow/{size}/64/3")),
+        Some(4),
+        None,
+    );
+
+    let cancel = CancelToken::new();
+    let trigger = cancel.clone();
+    let sink = move |sample: ProgressSample| {
+        if sample.downloaded_bytes >= 512 * 1024 {
+            trigger.cancel();
+        }
+    };
+    let progress: ProgressSink<'_> = &sink;
+    assert_eq!(
+        engine.run(id, cancel, Some(progress)).await.unwrap(),
+        RunOutcome::Paused
+    );
+
+    let paused = engine.get(id).unwrap().unwrap();
+    assert_eq!(paused.state, DownloadState::Paused);
+    assert!(paused.downloaded_bytes > 0);
+    assert!(paused.downloaded_bytes < size);
+
+    assert_eq!(
+        engine.run(id, CancelToken::new(), None).await.unwrap(),
+        RunOutcome::Completed
+    );
+    assert_eq!(final_bytes(&engine, id), expected(size, 0));
+
+    server.stop().await;
+}
+
+#[tokio::test]
+async fn speed_limit_throttles_a_single_stream() {
+    let server = TestServer::start().await.unwrap();
+    let temp = tempfile::tempdir().unwrap();
+    let mut engine = test_engine(temp.path());
+
+    let size = 256 * 1024;
+    let id = add_with(
+        &mut engine,
+        temp.path(),
+        server.url(&format!("/ok/{size}")),
+        None,
+        Some(128 * 1024),
+    );
+
+    let started = std::time::Instant::now();
+    assert_eq!(
+        engine.run(id, CancelToken::new(), None).await.unwrap(),
+        RunOutcome::Completed
+    );
+    let elapsed = started.elapsed();
+    assert!(
+        elapsed >= std::time::Duration::from_millis(1000),
+        "256 KiB at 128 KiB/s finished in {elapsed:?}"
+    );
+    assert_eq!(final_bytes(&engine, id), expected(size, 0));
+
+    server.stop().await;
 }
 
 #[test]

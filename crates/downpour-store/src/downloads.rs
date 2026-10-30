@@ -20,8 +20,8 @@ type Result<T> = std::result::Result<T, StoreError>;
 
 const COLUMNS: &str = "id, url, final_url, file_name, dest_dir, temp_path, final_path, status, \
      total_bytes, downloaded_bytes, mime, etag, last_modified, supports_ranges, connections, \
-     checksum_sha256, error_code, error_message, referer, user_agent, source, metadata_json, \
-     created_at, started_at, completed_at, updated_at";
+     speed_limit, checksum_sha256, error_code, error_message, referer, user_agent, source, \
+     metadata_json, created_at, started_at, completed_at, updated_at";
 
 /// Current wall-clock time in milliseconds since the Unix epoch.
 #[must_use]
@@ -76,6 +76,7 @@ pub struct DownloadRecord {
     pub last_modified: Option<String>,
     pub supports_ranges: Option<bool>,
     pub connections: u16,
+    pub speed_limit: Option<u64>,
     pub checksum_sha256: Option<String>,
     pub error: Option<ErrorInfo>,
     pub referer: Option<String>,
@@ -190,6 +191,22 @@ impl SegmentRecord {
             downloaded: self.downloaded,
         }
     }
+
+    /// Number of bytes in the segment.
+    #[must_use]
+    pub fn len(&self) -> u64 {
+        self.end.saturating_sub(self.start).saturating_add(1)
+    }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.end < self.start
+    }
+
+    #[must_use]
+    pub fn is_complete(&self) -> bool {
+        self.downloaded >= self.len()
+    }
 }
 
 fn parse_u64(value: i64) -> u64 {
@@ -212,9 +229,9 @@ fn parse_error_code(raw: Option<&str>, message: Option<String>) -> Option<ErrorI
 
 fn row_to_record(row: &Row<'_>) -> rusqlite::Result<DownloadRecord> {
     let state_text: String = row.get(7)?;
-    let source_text: String = row.get(20)?;
-    let error_code: Option<String> = row.get(16)?;
-    let error_message: Option<String> = row.get(17)?;
+    let source_text: String = row.get(21)?;
+    let error_code: Option<String> = row.get(17)?;
+    let error_message: Option<String> = row.get(18)?;
 
     Ok(DownloadRecord {
         id: DownloadId(Uuid::parse_str(&row.get::<_, String>(0)?).map_err(|err| {
@@ -234,16 +251,17 @@ fn row_to_record(row: &Row<'_>) -> rusqlite::Result<DownloadRecord> {
         last_modified: row.get(12)?,
         supports_ranges: row.get::<_, Option<i64>>(13)?.map(|value| value != 0),
         connections: u16::try_from(row.get::<_, i64>(14)?).unwrap_or(8),
-        checksum_sha256: row.get(15)?,
+        speed_limit: row.get::<_, Option<i64>>(15)?.map(parse_u64),
+        checksum_sha256: row.get(16)?,
         error: parse_error_code(error_code.as_deref(), error_message),
-        referer: row.get(18)?,
-        user_agent: row.get(19)?,
+        referer: row.get(19)?,
+        user_agent: row.get(20)?,
         source: DownloadSource::from_str(&source_text).unwrap_or_default(),
-        metadata_json: row.get(21)?,
-        created_at_ms: row.get(22)?,
-        started_at_ms: row.get(23)?,
-        completed_at_ms: row.get(24)?,
-        updated_at_ms: row.get(25)?,
+        metadata_json: row.get(22)?,
+        created_at_ms: row.get(23)?,
+        started_at_ms: row.get(24)?,
+        completed_at_ms: row.get(25)?,
+        updated_at_ms: row.get(26)?,
     })
 }
 
@@ -426,6 +444,71 @@ pub fn upsert_segment(
             now_ms(),
         ],
     )?;
+    Ok(())
+}
+
+/// Replace the whole segment plan for a download.
+pub fn replace_segments(
+    conn: &mut Connection,
+    id: DownloadId,
+    specs: &[SegmentSpec],
+) -> Result<()> {
+    let tx = conn.transaction()?;
+    tx.execute(
+        "DELETE FROM segments WHERE download_id = ?1",
+        params![id.to_string()],
+    )?;
+    let now = now_ms();
+    for spec in specs {
+        tx.execute(
+            "INSERT INTO segments (download_id, idx, start_offset, end_offset, downloaded, \
+             state, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, 'pending', ?6)",
+            params![
+                id.to_string(),
+                i64::from(spec.index),
+                clamp_i64(spec.start),
+                clamp_i64(spec.end),
+                clamp_i64(spec.downloaded),
+                now,
+            ],
+        )?;
+    }
+    tx.commit()?;
+    Ok(())
+}
+
+/// Commit durable progress for every segment in one transaction.
+pub fn commit_segments(
+    conn: &mut Connection,
+    id: DownloadId,
+    downloaded_total: u64,
+    segments: &[SegmentRecord],
+) -> Result<()> {
+    let tx = conn.transaction()?;
+    let now = now_ms();
+    tx.execute(
+        "UPDATE downloads SET downloaded_bytes = ?1, updated_at = ?2 WHERE id = ?3",
+        params![clamp_i64(downloaded_total), now, id.to_string()],
+    )?;
+    for segment in segments {
+        let state = if segment.is_complete() {
+            "done"
+        } else {
+            "active"
+        };
+        tx.execute(
+            "UPDATE segments SET downloaded = ?1, state = ?2, updated_at = ?3 \
+             WHERE download_id = ?4 AND idx = ?5",
+            params![
+                clamp_i64(segment.downloaded),
+                state,
+                now,
+                id.to_string(),
+                i64::from(segment.index),
+            ],
+        )?;
+    }
+    tx.commit()?;
     Ok(())
 }
 

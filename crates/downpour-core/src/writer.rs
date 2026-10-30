@@ -1,34 +1,39 @@
 //! The single writer thread.
 //!
 //! One download owns exactly one file handle, owned by one dedicated thread.
-//! Network tasks never touch the file; they send `(offset, bytes)` over a
-//! bounded channel. This avoids shared file cursors (`try_clone` duplicates
-//! the offset on both Unix and Windows), gives natural backpressure, and
-//! leaves one place that can fsync.
+//! Network tasks never touch the file; they send `(segment, offset, bytes)`
+//! over a bounded channel. This avoids shared file cursors (`try_clone`
+//! duplicates the offset on both Unix and Windows), gives natural backpressure,
+//! and leaves one place that can fsync.
 //!
 //! Checkpoint rule: the writer fsyncs the file before the engine commits the
-//! returned offset to SQLite, so a durable database offset is never ahead of
+//! returned offsets to SQLite, so a durable database offset is never ahead of
 //! durable bytes.
 
+use std::collections::HashMap;
 use std::fs::File;
 use std::io;
 
 use bytes::Bytes;
 use tokio::sync::{mpsc, oneshot};
 
-const CHANNEL_CAPACITY: usize = 128;
+const CHANNEL_CAPACITY: usize = 256;
+
+type SegmentEnds = Vec<(u32, u64)>;
 
 enum Command {
     Write {
+        segment: u32,
         offset: u64,
         data: Bytes,
     },
-    Truncate {
+    Reset {
         len: u64,
+        ends: SegmentEnds,
         ack: oneshot::Sender<io::Result<()>>,
     },
     Sync {
-        ack: oneshot::Sender<io::Result<u64>>,
+        ack: oneshot::Sender<io::Result<SegmentEnds>>,
     },
     Finish {
         ack: oneshot::Sender<io::Result<()>>,
@@ -42,13 +47,16 @@ pub struct ChunkWriter {
 }
 
 impl ChunkWriter {
-    /// Spawn the writer thread. `start_offset` is the number of bytes known to
-    /// be present in the file already.
-    pub fn spawn(file: File, start_offset: u64) -> io::Result<Self> {
+    /// Spawn the writer thread.
+    ///
+    /// `initial_ends` carries each segment's already-durable end offset
+    /// (exclusive), so a resume reports the correct progress before the first
+    /// new write.
+    pub fn spawn(file: File, initial_ends: SegmentEnds) -> io::Result<Self> {
         let (tx, rx) = mpsc::channel(CHANNEL_CAPACITY);
         let join = std::thread::Builder::new()
             .name("downpour-writer".to_owned())
-            .spawn(move || writer_loop(file, rx, start_offset))?;
+            .spawn(move || writer_loop(file, rx, initial_ends))?;
         Ok(Self {
             tx: Some(tx),
             join: Some(join),
@@ -56,35 +64,49 @@ impl ChunkWriter {
     }
 
     /// Queue a chunk at an absolute offset, waiting for channel capacity.
-    pub async fn write(&self, offset: u64, data: Bytes) -> io::Result<()> {
+    pub async fn write(&self, segment: u32, offset: u64, data: Bytes) -> io::Result<()> {
         let Some(tx) = self.tx.as_ref() else {
             return Err(closed());
         };
-        tx.send(Command::Write { offset, data })
-            .await
-            .map_err(|_| closed())
+        tx.send(Command::Write {
+            segment,
+            offset,
+            data,
+        })
+        .await
+        .map_err(|_| closed())
     }
 
-    /// Discard everything past `len` (used when a server restarts the body).
-    pub async fn truncate(&self, len: u64) -> io::Result<()> {
+    /// Discard everything past `len` and replace the progress map.
+    pub async fn reset(&self, len: u64, ends: SegmentEnds) -> io::Result<()> {
         let (ack, rx) = oneshot::channel();
         let Some(tx) = self.tx.as_ref() else {
             return Err(closed());
         };
-        tx.send(Command::Truncate { len, ack })
+        tx.send(Command::Reset { len, ends, ack })
             .await
             .map_err(|_| closed())?;
         rx.await.map_err(|_| closed())?
     }
 
-    /// Flush and fsync; returns the highest contiguous written offset.
-    pub async fn sync(&self) -> io::Result<u64> {
+    /// Flush and fsync; returns each segment's highest written end offset.
+    pub async fn sync(&self) -> io::Result<SegmentEnds> {
         let (ack, rx) = oneshot::channel();
         let Some(tx) = self.tx.as_ref() else {
             return Err(closed());
         };
         tx.send(Command::Sync { ack }).await.map_err(|_| closed())?;
         rx.await.map_err(|_| closed())?
+    }
+
+    /// Sync a single segment, for the single-stream path.
+    pub async fn sync_one(&self, segment: u32) -> io::Result<u64> {
+        let ends = self.sync().await?;
+        Ok(ends
+            .iter()
+            .find(|(index, _)| *index == segment)
+            .map(|(_, end)| *end)
+            .unwrap_or(0))
     }
 
     /// Flush, fsync, stop the thread, and wait for it to exit.
@@ -122,13 +144,17 @@ fn closed() -> io::Error {
     io::Error::new(io::ErrorKind::BrokenPipe, "writer thread stopped")
 }
 
-fn writer_loop(mut file: File, mut rx: mpsc::Receiver<Command>, start_offset: u64) {
-    let mut written_end = start_offset;
+fn writer_loop(mut file: File, mut rx: mpsc::Receiver<Command>, initial_ends: SegmentEnds) {
+    let mut ends: HashMap<u32, u64> = initial_ends.into_iter().collect();
     let mut failure: Option<io::Error> = None;
 
     while let Some(command) = rx.blocking_recv() {
         match command {
-            Command::Write { offset, data } => {
+            Command::Write {
+                segment,
+                offset,
+                data,
+            } => {
                 if failure.is_some() {
                     continue;
                 }
@@ -136,13 +162,21 @@ fn writer_loop(mut file: File, mut rx: mpsc::Receiver<Command>, start_offset: u6
                     failure = Some(error);
                     continue;
                 }
-                written_end = written_end.max(offset.saturating_add(data.len() as u64));
+                let end = offset.saturating_add(data.len() as u64);
+                let slot = ends.entry(segment).or_insert(end);
+                if end > *slot {
+                    *slot = end;
+                }
             }
-            Command::Truncate { len, ack } => {
+            Command::Reset {
+                len,
+                ends: new_ends,
+                ack,
+            } => {
                 let result = match failure.as_ref() {
                     Some(error) => Err(clone_error(error)),
                     None => file.set_len(len).map(|()| {
-                        written_end = len;
+                        ends = new_ends.into_iter().collect();
                     }),
                 };
                 let _ = ack.send(result);
@@ -150,7 +184,7 @@ fn writer_loop(mut file: File, mut rx: mpsc::Receiver<Command>, start_offset: u6
             Command::Sync { ack } => {
                 let result = match failure.as_ref() {
                     Some(error) => Err(clone_error(error)),
-                    None => file.sync_data().map(|()| written_end),
+                    None => file.sync_data().map(|()| sorted_ends(&ends)),
                 };
                 let _ = ack.send(result);
             }
@@ -163,6 +197,12 @@ fn writer_loop(mut file: File, mut rx: mpsc::Receiver<Command>, start_offset: u6
             }
         }
     }
+}
+
+fn sorted_ends(ends: &HashMap<u32, u64>) -> SegmentEnds {
+    let mut out: SegmentEnds = ends.iter().map(|(index, end)| (*index, *end)).collect();
+    out.sort_unstable_by_key(|(index, _)| *index);
+    out
 }
 
 fn clone_error(error: &io::Error) -> io::Error {
@@ -218,26 +258,31 @@ mod tests {
     use super::*;
     use std::io::Read;
 
-    #[tokio::test]
-    async fn writes_at_offsets_and_syncs() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("out.bin");
-        let file = File::options()
+    fn open(path: &std::path::Path) -> File {
+        File::options()
             .create(true)
             .read(true)
             .write(true)
             .truncate(true)
-            .open(&path)
-            .unwrap();
+            .open(path)
+            .unwrap()
+    }
 
-        let writer = ChunkWriter::spawn(file, 0).unwrap();
+    #[tokio::test]
+    async fn writes_at_offsets_and_syncs() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("out.bin");
+        let writer = ChunkWriter::spawn(open(&path), vec![(0, 0)]).unwrap();
+
         writer
-            .write(0, Bytes::from_static(b"hello "))
+            .write(0, 0, Bytes::from_static(b"hello "))
             .await
             .unwrap();
-        writer.write(6, Bytes::from_static(b"world")).await.unwrap();
-        let end = writer.sync().await.unwrap();
-        assert_eq!(end, 11);
+        writer
+            .write(0, 6, Bytes::from_static(b"world"))
+            .await
+            .unwrap();
+        assert_eq!(writer.sync_one(0).await.unwrap(), 11);
         writer.finish().await.unwrap();
 
         let mut contents = Vec::new();
@@ -249,25 +294,39 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn truncate_discards_tail() {
+    async fn tracks_segments_independently() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("out.bin");
-        let file = File::options()
-            .create(true)
-            .read(true)
-            .write(true)
-            .truncate(true)
-            .open(&path)
-            .unwrap();
+        let writer = ChunkWriter::spawn(open(&path), vec![(0, 0), (1, 0)]).unwrap();
 
-        let writer = ChunkWriter::spawn(file, 0).unwrap();
         writer
-            .write(0, Bytes::from_static(b"0123456789"))
+            .write(1, 4, Bytes::from_static(b"EFGH"))
             .await
             .unwrap();
-        writer.sync().await.unwrap();
-        writer.truncate(4).await.unwrap();
-        assert_eq!(writer.sync().await.unwrap(), 4);
+        writer
+            .write(0, 0, Bytes::from_static(b"ABCD"))
+            .await
+            .unwrap();
+
+        let ends = writer.sync().await.unwrap();
+        assert_eq!(ends, vec![(0, 4), (1, 8)]);
+        writer.finish().await.unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"ABCDEFGH");
+    }
+
+    #[tokio::test]
+    async fn reset_discards_the_tail() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("out.bin");
+        let writer = ChunkWriter::spawn(open(&path), vec![(0, 0)]).unwrap();
+
+        writer
+            .write(0, 0, Bytes::from_static(b"0123456789"))
+            .await
+            .unwrap();
+        writer.sync_one(0).await.unwrap();
+        writer.reset(4, vec![(0, 4)]).await.unwrap();
+        assert_eq!(writer.sync_one(0).await.unwrap(), 4);
         writer.finish().await.unwrap();
 
         assert_eq!(std::fs::read(&path).unwrap(), b"0123");

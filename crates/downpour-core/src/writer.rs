@@ -108,8 +108,13 @@ impl ChunkWriter {
 
 impl Drop for ChunkWriter {
     fn drop(&mut self) {
-        // Dropping the sender makes the writer exit its receive loop.
+        // Dropping the sender makes the writer exit its receive loop. Join it
+        // so the file handle is closed before the caller moves or reopens the
+        // file: Windows refuses some operations while a handle is open.
         self.tx.take();
+        if let Some(join) = self.join.take() {
+            let _ = join.join();
+        }
     }
 }
 

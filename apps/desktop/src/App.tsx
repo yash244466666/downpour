@@ -16,7 +16,7 @@ import {
 import * as engine from "./lib/engine";
 import type { Settings } from "./lib/engine";
 import { fileNameFromUrl, guessKind } from "./lib/format";
-import type { Filter } from "./lib/filters";
+import { filterDownloads, type Filter } from "./lib/filters";
 import { useTheme } from "./lib/theme";
 
 const FALLBACK_SETTINGS: Settings = {
@@ -24,6 +24,13 @@ const FALLBACK_SETTINGS: Settings = {
   connections: 8,
   speedLimit: 0,
   theme: "system",
+  maxConcurrent: 3,
+  maxPerHost: 4,
+  scheduleEnabled: false,
+  scheduleStart: "00:00",
+  scheduleEnd: "23:59",
+  scheduleDays: 0b01111111,
+  autostart: false,
 };
 
 function mockRow(url: string, connections: number): DemoDownload {
@@ -56,6 +63,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
+  const [category, setCategory] = useState<DownloadKind | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -81,23 +89,10 @@ export default function App() {
     return () => window.clearInterval(timer);
   }, [refresh]);
 
-  const visible = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    return downloads.filter((download) => {
-      const matchesQuery =
-        !needle ||
-        download.name.toLowerCase().includes(needle) ||
-        download.host.toLowerCase().includes(needle);
-      const matchesFilter =
-        filter === "all" ||
-        (filter === "active" &&
-          (download.status === "downloading" ||
-            download.status === "paused")) ||
-        (filter === "queued" && download.status === "queued") ||
-        (filter === "completed" && download.status === "completed");
-      return matchesQuery && matchesFilter;
-    });
-  }, [downloads, filter, query]);
+  const visible = useMemo(
+    () => filterDownloads(downloads, filter, category, query),
+    [downloads, filter, category, query],
+  );
 
   const counts = useMemo(
     () => ({
@@ -235,6 +230,55 @@ export default function App() {
     }
   }
 
+  async function changePriority(id: string, delta: number) {
+    const download = downloads.find((item) => item.id === id);
+    if (!download || preview) return;
+    try {
+      await engine.setPriority(id, (download.priority ?? 0) + delta);
+      await refresh();
+    } catch (error) {
+      setToast(String(error));
+    }
+  }
+
+  async function startAll() {
+    if (preview) {
+      setDownloads((list) =>
+        list.map((item) =>
+          item.status === "queued" || item.status === "paused"
+            ? { ...item, status: "downloading" }
+            : item,
+        ),
+      );
+      return;
+    }
+    try {
+      await engine.startAll();
+      await refresh();
+    } catch (error) {
+      setToast(String(error));
+    }
+  }
+
+  async function pauseAll() {
+    if (preview) {
+      setDownloads((list) =>
+        list.map((item) =>
+          item.status === "downloading" || item.status === "queued"
+            ? { ...item, status: "paused", speed: 0, eta: undefined }
+            : item,
+        ),
+      );
+      return;
+    }
+    try {
+      await engine.pauseAll();
+      await refresh();
+    } catch (error) {
+      setToast(String(error));
+    }
+  }
+
   async function saveSettings(next: Settings) {
     setSettings(next);
     setSettingsOpen(false);
@@ -256,7 +300,9 @@ export default function App() {
         counts={counts}
         categoryCounts={categoryCounts}
         filter={filter}
+        category={category}
         onFilter={setFilter}
+        onCategory={setCategory}
         totalSpeed={totalSpeed}
         preview={preview}
         onOpenFolder={() => {
@@ -300,6 +346,9 @@ export default function App() {
               onCancel={(id) => void cancelDownload(id)}
               onRemove={(id) => void removeDownload(id)}
               onReveal={(download) => void revealDownload(download)}
+              onPriority={(id, delta) => void changePriority(id, delta)}
+              onStartAll={() => void startAll()}
+              onPauseAll={() => void pauseAll()}
             />
           </div>
         </main>

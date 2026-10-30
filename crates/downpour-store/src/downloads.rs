@@ -21,7 +21,7 @@ type Result<T> = std::result::Result<T, StoreError>;
 const COLUMNS: &str = "id, url, final_url, file_name, dest_dir, temp_path, final_path, status, \
      total_bytes, downloaded_bytes, mime, etag, last_modified, supports_ranges, connections, \
      speed_limit, checksum_sha256, error_code, error_message, referer, user_agent, source, \
-     metadata_json, created_at, started_at, completed_at, updated_at";
+     metadata_json, priority, created_at, started_at, completed_at, updated_at";
 
 /// Current wall-clock time in milliseconds since the Unix epoch.
 #[must_use]
@@ -83,6 +83,7 @@ pub struct DownloadRecord {
     pub user_agent: Option<String>,
     pub source: DownloadSource,
     pub metadata_json: Option<String>,
+    pub priority: i64,
     pub created_at_ms: i64,
     pub started_at_ms: Option<i64>,
     pub completed_at_ms: Option<i64>,
@@ -258,10 +259,11 @@ fn row_to_record(row: &Row<'_>) -> rusqlite::Result<DownloadRecord> {
         user_agent: row.get(20)?,
         source: DownloadSource::from_str(&source_text).unwrap_or_default(),
         metadata_json: row.get(22)?,
-        created_at_ms: row.get(23)?,
-        started_at_ms: row.get(24)?,
-        completed_at_ms: row.get(25)?,
-        updated_at_ms: row.get(26)?,
+        priority: row.get(23)?,
+        created_at_ms: row.get(24)?,
+        started_at_ms: row.get(25)?,
+        completed_at_ms: row.get(26)?,
+        updated_at_ms: row.get(27)?,
     })
 }
 
@@ -333,7 +335,7 @@ pub fn list(conn: &Connection, limit: usize) -> Result<Vec<DownloadRecord>> {
 pub fn list_runnable(conn: &Connection) -> Result<Vec<DownloadRecord>> {
     let sql = format!(
         "SELECT {COLUMNS} FROM downloads \
-         WHERE status IN ('queued', 'paused') ORDER BY created_at ASC"
+         WHERE status IN ('queued', 'paused') ORDER BY priority DESC, created_at ASC"
     );
     let mut statement = conn.prepare(&sql)?;
     let rows = statement.query_map([], row_to_record)?;
@@ -342,6 +344,15 @@ pub fn list_runnable(conn: &Connection) -> Result<Vec<DownloadRecord>> {
         out.push(row?);
     }
     Ok(out)
+}
+
+/// Move a download in the queue.
+pub fn set_priority(conn: &Connection, id: DownloadId, priority: i64) -> Result<()> {
+    conn.execute(
+        "UPDATE downloads SET priority = ?1, updated_at = ?2 WHERE id = ?3",
+        params![priority, now_ms(), id.to_string()],
+    )?;
+    Ok(())
 }
 
 /// Update the lifecycle state.

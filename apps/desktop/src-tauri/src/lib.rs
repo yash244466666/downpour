@@ -11,11 +11,14 @@ use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
+use chrono::{Datelike, Timelike};
+use downpour_core::schedule::{parse_minutes, window_allows};
 use downpour_core::{CancelToken, Engine, EngineConfig, ProgressSample, RunOutcome};
 use downpour_store::downloads::DownloadRecord;
-use downpour_types::{AddDownloadRequest, DownloadId, EngineInfo};
+use downpour_types::{AddDownloadRequest, DownloadId, DownloadState, EngineInfo};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
+use tauri_plugin_autostart::ManagerExt;
 
 struct AppState {
     db_path: PathBuf,
@@ -65,6 +68,7 @@ struct DownloadView {
     final_path: Option<String>,
     created_at_ms: i64,
     completed_at_ms: Option<i64>,
+    priority: i64,
 }
 
 impl DownloadView {
@@ -91,6 +95,7 @@ impl DownloadView {
             final_path: record.final_path.clone(),
             created_at_ms: record.created_at_ms,
             completed_at_ms: record.completed_at_ms,
+            priority: record.priority,
         }
     }
 }
@@ -111,6 +116,13 @@ struct SettingsView {
     connections: u16,
     speed_limit: u64,
     theme: String,
+    max_concurrent: u16,
+    max_per_host: u16,
+    schedule_enabled: bool,
+    schedule_start: String,
+    schedule_end: String,
+    schedule_days: u8,
+    autostart: bool,
 }
 
 /// Identity of the embedded engine, shown in the UI status bar.
@@ -210,89 +222,272 @@ async fn remove_download(state: State<'_, AppState>, id: String) -> Result<(), S
         .map_err(|error| error.to_string())
 }
 
-#[tauri::command]
-async fn get_settings(state: State<'_, AppState>) -> Result<SettingsView, String> {
-    let engine = open_engine(&state)?;
-    let config = lock(&state.config).clone();
-    let download_dir = engine
-        .setting("downloads.default_dir")
-        .ok()
-        .flatten()
-        .and_then(|value| value.as_str().map(str::to_owned))
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| config.default_dir.to_string_lossy().into_owned());
-    let connections = engine
-        .setting("downloads.default_connections")
+fn setting_u64(engine: &Engine, key: &str) -> Option<u64> {
+    engine
+        .setting(key)
         .ok()
         .flatten()
         .and_then(|value| value.as_u64())
+}
+
+fn setting_bool(engine: &Engine, key: &str) -> Option<bool> {
+    engine
+        .setting(key)
+        .ok()
+        .flatten()
+        .and_then(|value| value.as_bool())
+}
+
+fn setting_string(engine: &Engine, key: &str) -> Option<String> {
+    engine
+        .setting(key)
+        .ok()
+        .flatten()
+        .and_then(|value| value.as_str().map(str::to_owned))
+}
+
+fn load_settings(app: &AppHandle, state: &AppState) -> Result<SettingsView, String> {
+    let engine = open_engine(state)?;
+    let config = lock(&state.config).clone();
+
+    let download_dir = setting_string(&engine, "downloads.default_dir")
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| config.default_dir.to_string_lossy().into_owned());
+    let connections = setting_u64(&engine, "downloads.default_connections")
         .and_then(|value| u16::try_from(value).ok())
         .unwrap_or(config.default_connections)
         .clamp(1, 32);
-    let speed_limit = engine
-        .setting("network.speed_limit")
-        .ok()
-        .flatten()
-        .and_then(|value| value.as_u64())
-        .unwrap_or(config.global_speed_limit);
-    let theme = engine
-        .setting("ui.theme")
-        .ok()
-        .flatten()
-        .and_then(|value| value.as_str().map(str::to_owned))
-        .unwrap_or_else(|| "system".to_owned());
+    let speed_limit =
+        setting_u64(&engine, "network.speed_limit").unwrap_or(config.global_speed_limit);
+    let theme = setting_string(&engine, "ui.theme").unwrap_or_else(|| "system".to_owned());
+    let max_concurrent = setting_u64(&engine, "downloads.max_concurrent")
+        .unwrap_or(3)
+        .clamp(1, 16) as u16;
+    let max_per_host = setting_u64(&engine, "downloads.max_per_host")
+        .unwrap_or(4)
+        .clamp(1, 32) as u16;
+    let schedule_enabled = setting_bool(&engine, "schedule.enabled").unwrap_or(false);
+    let schedule_start =
+        setting_string(&engine, "schedule.start").unwrap_or_else(|| "00:00".to_owned());
+    let schedule_end =
+        setting_string(&engine, "schedule.end").unwrap_or_else(|| "23:59".to_owned());
+    let schedule_days = setting_u64(&engine, "schedule.days")
+        .unwrap_or(0b0111_1111)
+        .min(0b0111_1111) as u8;
+    let autostart = app.autolaunch().is_enabled().unwrap_or(false);
 
     Ok(SettingsView {
         download_dir,
         connections,
         speed_limit,
         theme,
+        max_concurrent,
+        max_per_host,
+        schedule_enabled,
+        schedule_start,
+        schedule_end,
+        schedule_days,
+        autostart,
     })
 }
 
 #[tauri::command]
-async fn set_settings(state: State<'_, AppState>, settings: SettingsView) -> Result<(), String> {
+async fn get_settings(app: AppHandle, state: State<'_, AppState>) -> Result<SettingsView, String> {
+    load_settings(&app, &state)
+}
+
+#[tauri::command]
+async fn set_settings(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    settings: SettingsView,
+) -> Result<(), String> {
     if settings.download_dir.trim().is_empty() {
         return Err("download directory cannot be empty".to_owned());
     }
     if !(1..=32).contains(&settings.connections) {
         return Err("connections must be between 1 and 32".to_owned());
     }
+    if !(1..=16).contains(&settings.max_concurrent) {
+        return Err("maximum concurrent downloads must be between 1 and 16".to_owned());
+    }
+    if !(1..=32).contains(&settings.max_per_host) {
+        return Err("per-host limit must be between 1 and 32".to_owned());
+    }
+    if settings.schedule_enabled
+        && (parse_minutes(&settings.schedule_start).is_none()
+            || parse_minutes(&settings.schedule_end).is_none())
+    {
+        return Err("schedule times must use HH:MM".to_owned());
+    }
+    if settings.schedule_enabled && settings.schedule_days == 0 {
+        return Err("choose at least one schedule day".to_owned());
+    }
     if !matches!(settings.theme.as_str(), "system" | "light" | "dark") {
         return Err("unknown theme".to_owned());
     }
 
     let mut engine = open_engine(&state)?;
-    engine
-        .set_setting(
+    let entries: [(&str, serde_json::Value); 10] = [
+        (
             "downloads.default_dir",
-            &serde_json::Value::String(settings.download_dir.clone()),
-        )
-        .map_err(|error| error.to_string())?;
-    engine
-        .set_setting(
+            serde_json::Value::String(settings.download_dir.clone()),
+        ),
+        (
             "downloads.default_connections",
-            &serde_json::json!(settings.connections),
-        )
-        .map_err(|error| error.to_string())?;
-    engine
-        .set_setting(
+            serde_json::json!(settings.connections),
+        ),
+        (
             "network.speed_limit",
-            &serde_json::json!(settings.speed_limit),
-        )
-        .map_err(|error| error.to_string())?;
-    engine
-        .set_setting(
+            serde_json::json!(settings.speed_limit),
+        ),
+        (
             "ui.theme",
-            &serde_json::Value::String(settings.theme.clone()),
-        )
-        .map_err(|error| error.to_string())?;
+            serde_json::Value::String(settings.theme.clone()),
+        ),
+        (
+            "downloads.max_concurrent",
+            serde_json::json!(settings.max_concurrent),
+        ),
+        (
+            "downloads.max_per_host",
+            serde_json::json!(settings.max_per_host),
+        ),
+        (
+            "schedule.enabled",
+            serde_json::json!(settings.schedule_enabled),
+        ),
+        (
+            "schedule.start",
+            serde_json::Value::String(settings.schedule_start.clone()),
+        ),
+        (
+            "schedule.end",
+            serde_json::Value::String(settings.schedule_end.clone()),
+        ),
+        ("schedule.days", serde_json::json!(settings.schedule_days)),
+    ];
+    for (key, value) in entries {
+        engine
+            .set_setting(key, &value)
+            .map_err(|error| error.to_string())?;
+    }
 
     {
         let mut config = lock(&state.config);
         config.default_dir = PathBuf::from(&settings.download_dir);
         config.default_connections = settings.connections;
         config.global_speed_limit = settings.speed_limit;
+    }
+
+    let autolaunch = app.autolaunch();
+    let result = if settings.autostart {
+        autolaunch.enable()
+    } else {
+        autolaunch.disable()
+    };
+    result.map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn set_priority(state: State<'_, AppState>, id: String, priority: i64) -> Result<(), String> {
+    let mut engine = open_engine(&state)?;
+    engine
+        .set_priority(parse_id(&id)?, priority)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn pause_all(state: State<'_, AppState>) -> Result<(), String> {
+    let handles: Vec<RunHandle> = lock(&state.running).values().cloned().collect();
+    for handle in handles {
+        handle.cancel.cancel();
+    }
+    let mut engine = open_engine(&state)?;
+    for record in engine.list_runnable().map_err(|error| error.to_string())? {
+        if record.state == DownloadState::Queued {
+            engine.pause(record.id).map_err(|error| error.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn start_all(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let mut engine = open_engine(&state)?;
+    for record in engine.list_runnable().map_err(|error| error.to_string())? {
+        if record.state == DownloadState::Paused {
+            engine
+                .requeue(record.id)
+                .map_err(|error| error.to_string())?;
+        }
+    }
+    scheduler_tick(&app)
+}
+
+fn host_of(url: &str) -> String {
+    url::Url::parse(url)
+        .ok()
+        .and_then(|parsed| parsed.host_str().map(str::to_owned))
+        .unwrap_or_else(|| "direct".to_owned())
+}
+
+/// Start queued downloads within the concurrency, per-host, and schedule
+/// limits. Safe to call often; it does nothing when no slot is free.
+fn scheduler_tick(app: &AppHandle) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let settings = load_settings(app, &state)?;
+
+    let now = chrono::Local::now();
+    let weekday = now.weekday().num_days_from_monday() as u8;
+    let minutes = now.hour() as u16 * 60 + now.minute() as u16;
+    let start = parse_minutes(&settings.schedule_start).unwrap_or(0);
+    let end = parse_minutes(&settings.schedule_end).unwrap_or(1439);
+    let inside_window = !settings.schedule_enabled
+        || window_allows(settings.schedule_days, start, end, weekday, minutes);
+
+    if !inside_window {
+        let handles: Vec<RunHandle> = lock(&state.running).values().cloned().collect();
+        for handle in handles {
+            handle.cancel.cancel();
+        }
+        return Ok(());
+    }
+
+    let engine = open_engine(&state)?;
+    let records = engine.list(500).map_err(|error| error.to_string())?;
+    let running_ids: std::collections::HashSet<String> =
+        lock(&state.running).keys().cloned().collect();
+
+    let mut slots = usize::from(settings.max_concurrent);
+    let mut per_host: HashMap<String, usize> = HashMap::new();
+    for record in &records {
+        if running_ids.contains(&record.id.to_string()) {
+            slots = slots.saturating_sub(1);
+            *per_host.entry(host_of(&record.url)).or_default() += 1;
+        }
+    }
+
+    for record in engine.list_runnable().map_err(|error| error.to_string())? {
+        if record.state != DownloadState::Queued {
+            continue;
+        }
+        let id = record.id.to_string();
+        if running_ids.contains(&id) {
+            continue;
+        }
+        if slots == 0 {
+            break;
+        }
+        let host = host_of(&record.url);
+        if per_host.get(&host).copied().unwrap_or(0) >= usize::from(settings.max_per_host) {
+            continue;
+        }
+        if start_run(app, &id).is_ok() {
+            slots -= 1;
+            *per_host.entry(host).or_default() += 1;
+        }
     }
     Ok(())
 }
@@ -489,11 +684,29 @@ fn show_window(app: &AppHandle) {
 
 pub fn run() {
     tauri::Builder::default()
+        // Must be the first plugin: a second launch focuses the running app.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            show_window(app);
+        }))
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             app.manage(load_state());
             build_tray(app)?;
+
+            let scheduler_app = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+                    if let Err(error) = scheduler_tick(&scheduler_app) {
+                        tracing::warn!(%error, "scheduler tick failed");
+                    }
+                }
+            });
 
             if let Some(window) = app.get_webview_window("main") {
                 let window_for_event = window.clone();
@@ -516,6 +729,9 @@ pub fn run() {
             remove_download,
             get_settings,
             set_settings,
+            set_priority,
+            pause_all,
+            start_all,
             reveal_path
         ])
         .run(tauri::generate_context!())

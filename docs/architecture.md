@@ -58,7 +58,7 @@ version can move it into a daemon without rewriting the transfer code.
 5. **Finalize** — fsync, length check, optional SHA-256, atomic rename, fsync
    the parent directory on Unix, then mark complete.
 
-### Implemented in M1–M3
+### Implemented in M1–M4
 
 `probe`, the single writer thread, checkpointing, resume, pause, finalize, the
 CLI, segmented transfer, and throttling are live in `downpour-core` /
@@ -80,6 +80,15 @@ One `Engine` drives one download at a time; the desktop app gives each running
 download its own engine (and SQLite connection), so the UI stays responsive.
 Queue-level concurrency arrives in M4. Every run re-probes, so a short-lived
 signed URL is refreshed before each resume.
+
+### Queue and scheduler (M4)
+
+The queue lives in SQLite (`downloads.priority`, `status`). The desktop app
+runs a scheduler tick every 1.5 s: it starts `queued` downloads in priority
+order while respecting the global concurrency limit and a per-host cap, and
+pauses running transfers outside the configured start/stop window. Paused rows
+are never auto-started, so an explicit user pause wins. The CLI runs its queue
+sequentially in one process.
 
 ### Desktop shell (M3)
 

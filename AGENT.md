@@ -9,13 +9,13 @@
 Ship Downpour milestone by milestone. Each milestone must leave the repository
 gate-clean and honest about what works.
 
-- **Current:** M3 complete (2026-10-31). The desktop dashboard is wired to the
-  engine with settings, tray, notifications, and frontend unit tests.
-- **Next:** M4 — queue, priorities, categories, scheduler, autostart,
-  single-instance, updater wiring. Acceptance criteria are in
-  `docs/roadmap.md`.
+- **Current:** M4 complete (2026-10-31). Persistent queue with concurrency and
+  per-host limits, priorities, category filters, schedule window, autostart,
+  and single-instance. Updater is deferred to M8.
+- **Next:** M5 — IPC server/client, native-messaging host, Chromium/Edge
+  extension. Acceptance criteria are in `docs/roadmap.md`.
 - **Not implemented:** IPC server, browser extension, media pipeline, crawler,
-  packaging. Do not claim otherwise in code, docs, commits, or chat.
+  packaging/updater. Do not claim otherwise in code, docs, commits, or chat.
 
 ## 1. Bootstrap (every session)
 

@@ -1,15 +1,15 @@
 # Roadmap
 
-Status as of 2026-10-30.
+Status as of 2026-10-31.
 
 | Milestone | Scope | State |
 |---|---|---|
 | **M0** | Workspace, types/store, Tauri shell, dashboard preview, testkit skeleton, CI, docs, licenses | ✅ complete |
 | **M1** | Single-stream engine: probe, temp file, SQLite journal, resume, pause, CLI | ✅ complete |
 | **M2** | Multi-connection transfers, dynamic segmentation, throttle, retries, kill-9 crash tests | ✅ complete |
-| **M3** | Full desktop UI wired to the engine: table, detail graph, settings, tray, notifications | ⏳ next |
-| **M4** | Queue, priorities, categories/rules, scheduler, autostart, single-instance, updater wiring | ⬜ |
-| **M5** | IPC server/client, native-messaging host, Chromium/Edge extension takeover | ⬜ |
+| **M3** | Full desktop UI wired to the engine: table, settings, tray, notifications | ✅ complete |
+| **M4** | Queue, priorities, category filters, scheduler, autostart, single-instance | ✅ complete |
+| **M5** | IPC server/client, native-messaging host, Chromium/Edge extension takeover | ⏳ next |
 | **M6** | yt-dlp integration, media detection UI, HLS fallback | ⬜ |
 | **M7** | Site grabber + batch import/expansion | ⬜ |
 | **M8** | Packaging: NSIS per-user, universal DMG, AppImage/deb/rpm; signing/notarization; release CI | ⬜ |
@@ -65,12 +65,29 @@ Concurrency across downloads is **not** part of M2; it lands with the queue.
 - [x] Tray icon and close-to-tray behavior; completion notifications.
 - [x] 12 Vitest unit tests for formatting and record mapping.
 
-## Next: M4 acceptance
+## Definition of done for M4
 
-- Persistent queue with concurrency limits, priorities, and per-host caps.
-- Categories/rules and a start/stop scheduler.
-- Autostart, single-instance, and updater wiring.
-- Queue state survives restarts; the UI can reorder and pause the queue.
+- [x] Persistent queue with concurrency and per-host limits.
+- [x] Priorities with up/down controls on queued rows.
+- [x] Category filters in the sidebar.
+- [x] Start/stop schedule window (including overnight windows) with weekday
+      selection; running transfers pause outside it.
+- [x] Start all / Pause all; the scheduler starts queued items only.
+- [x] Autostart toggle and single-instance focus.
+- [x] Verified live: five queued downloads with a limit of three produce
+      exactly three active and two queued; Pause all and Start all behave.
+- [ ] Updater wiring — deferred to M8 with release signing keys.
+- [ ] Category path rules (per-category folders) — filters shipped; rules are
+      future work.
+
+## Next: M5 acceptance
+
+- Local IPC server and client with a per-start token and peer checks.
+- `downpour --register-browsers` writes native-messaging manifests.
+- The native host forwards browser requests to the engine.
+- A Chromium/Edge extension takes over downloads and hands over cookies,
+  referer, and user agent.
+- An end-to-end browser download reaches the engine and completes.
 
 ## Lean MVP cut line
 

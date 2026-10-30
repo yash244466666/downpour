@@ -9,12 +9,14 @@
 Ship Downpour milestone by milestone. Each milestone must leave the repository
 gate-clean and honest about what works.
 
-- **Current:** M8 complete (2026-10-31). Bundle metadata, release workflow,
-  updater plugin, signing documentation; Linux deb verified locally.
-- **Next:** M9 — diagnostics, accessibility, docs.
-- **Not implemented:** signed/notarized builds, configured update channel,
-  managed yt-dlp auto-download, quality selection, Firefox/Safari extensions,
-  grabber UI. Do not claim otherwise in code, docs, commits, or chat.
+- **Current:** M9 complete (2026-10-31). `downpour doctor`, accessibility
+  improvements, troubleshooting/release/accessibility docs.
+- **Next:** the post-v1 backlog (see `docs/roadmap.md`): signed releases,
+  updater channel, managed yt-dlp, quality selection, Firefox/Safari,
+  grabber UI, Bengali localization.
+- **Not implemented:** those backlog items plus dialog focus trapping and
+  automated accessibility checks. Do not claim otherwise in code, docs,
+  commits, or chat.
 
 ## 1. Bootstrap (every session)
 

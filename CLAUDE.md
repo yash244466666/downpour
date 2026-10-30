@@ -1,7 +1,7 @@
 # CLAUDE.md — Downpour
 
 > Project context for Claude Code. Read this before changing anything.
-> Last updated: 2026-10-31 (M8 complete).
+> Last updated: 2026-10-31 (M9 complete).
 
 ## 1. What this is
 
@@ -10,9 +10,10 @@ manager in the IDM class: 1–32 parallel connections per file, crash-safe resum
 queues, scheduler, bandwidth throttling, browser download take-over, media
 grabbing (HLS/DASH/yt-dlp), and a site grabber — wrapped in a modern dashboard.
 
-**Current status: M8 complete.** All core features are live and packaging is
-configured; signed/notarized release builds still need maintainer
-credentials. Do not describe unfinished features as working.
+**Current status: M9 complete.** All v1 milestones are delivered except the
+documented gaps: signed/notarized releases, a configured update channel,
+managed yt-dlp download, quality selection, Firefox/Safari extensions, the
+grabber UI, and Bengali localization. Do not describe those as shipped.
 
 | Area | State |
 |---|---|
@@ -35,6 +36,8 @@ credentials. Do not describe unfinished features as working.
 | Media | HLS parser/downloader, AES-128, yt-dlp detection/run; DASH via yt-dlp |
 | Grabber | Robots-aware BFS crawler, batch expansion, persisted job/frontier |
 | Packaging | `.deb` verified locally; release workflow for NSIS/DMG/AppImage |
+| Diagnostics | `downpour doctor` (DB, folders, tools, IPC, browser manifests) |
+| Accessibility | Focus rings, reduced motion, labelled controls, dialog autofocus |
 | Signing / updater | Hooks documented; updater plugin wired, unconfigured |
 
 If your task touches an unimplemented area, the milestone that owns it is in
@@ -150,6 +153,7 @@ cargo run -p downpour-cli -- list
 cargo run -p downpour-cli -- info <ID>
 cargo run -p downpour-cli -- cancel <ID>      # only when not running
 cargo run -p downpour-cli -- register-browsers # Chromium/Edge native messaging
+cargo run -p downpour-cli -- doctor            # environment diagnostics
 
 # Useful
 cargo check -p downpour-desktop              # Tauri shell only
@@ -286,7 +290,7 @@ Full detail in `docs/roadmap.md`.
 | M6 | yt-dlp, media detection, HLS fallback | ✅ |
 | M7 | Site grabber, batch import | ✅ |
 | M8 | Packaging, signing, notarization, release CI | ✅ |
-| M9 | Accessibility, i18n, diagnostics, docs | next |
+| M9 | Accessibility, diagnostics, docs | ✅ |
 
 **M1 exit criteria (met):** a real file downloads over one stream; state
 persists; kill the process and resume without re-downloading committed bytes;
@@ -327,9 +331,14 @@ maintainer credentials. Windows and macOS installers are produced by CI, not
 verified on this machine. The updater plugin is wired but has no update
 channel or signing key.
 
-**M9 exit criteria:** `downpour doctor`, visible keyboard focus and reduced
-motion, accessibility notes, troubleshooting/release docs, and an honest list
-of remaining gaps (i18n deferred).
+**M9 exit criteria (met):** `downpour doctor`, visible keyboard focus and
+reduced motion, accessibility notes, troubleshooting/release docs, and an
+honest list of remaining gaps (i18n deferred).
+
+**Post-v1 backlog:** signed/notarized releases, updater channel/keys, managed
+yt-dlp download with pinned hashes, HLS quality selection, Firefox/Safari
+extensions, grabber UI, Bengali localization (the `ui.language` setting is
+reserved), dialogs focus trap, automated axe/CSP hardening.
 
 ## 12. Branching and releases
 

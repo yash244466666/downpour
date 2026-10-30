@@ -91,6 +91,7 @@ export function BatchImportDialog({
               URLs
             </span>
             <textarea
+              autoFocus
               value={text}
               onChange={(event) => {
                 setText(event.target.value);

@@ -137,6 +137,7 @@ impl Engine {
         })
     }
 
+    /// Effective engine configuration.
     #[must_use]
     pub fn config(&self) -> &EngineConfig {
         &self.config

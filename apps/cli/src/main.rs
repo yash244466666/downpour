@@ -81,7 +81,7 @@ struct AddArgs {
     /// Parallel connections (used by the segmented engine in M2).
     #[arg(short, long, default_value_t = 8)]
     connections: u16,
-    /// Extra request header, repeatable: -H "Referer: https://example.com".
+    /// Extra request header, repeatable: -H "Referer: example.com/page".
     #[arg(short = 'H', long = "header")]
     headers: Vec<String>,
 }

@@ -10,7 +10,7 @@
 //! | `/health` | plain `ok` |
 //! | `/ok/{size}` | ranges, stable ETag, `If-Range` aware |
 //! | `/no-range/{size}` | ignores `Range`, always `200` |
-//! | `/versioned/{size}` | body and ETag controlled by [`TestServer::set_etag`]/[`set_seed`] |
+//! | `/versioned/{size}` | body and ETag controlled by [`TestServer::set_etag`] / [`TestServer::set_seed`] |
 //! | `/flip-after-range/{size}` | probe and plain GET see v1; a resume request sees v2 and gets a full `200` |
 //! | `/drop/{size}/{after}` | first *full* request (no `Range`) drops the connection after `after` bytes |
 //! | `/always-truncated/{size}` | declares `Content-Length: size` but always sends half |

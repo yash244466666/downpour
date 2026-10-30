@@ -119,12 +119,28 @@ Concurrency across downloads is **not** part of M2; it lands with the queue.
       URL cap.
 - [ ] Grabber UI (the current UI has batch import, not a crawl dialog).
 
-## Next: M8 acceptance
+## Definition of done for M8
 
-- `tauri build` produces NSIS, DMG, AppImage, deb, and rpm artifacts.
-- Release workflow uploads artifacts for the three platforms.
-- Signing/notarization hooks documented and gated on maintainer credentials.
-- Updater plugin wired and documented (keys required).
+- [x] Bundle metadata: publisher, category, descriptions, per-user NSIS,
+      macOS 13 minimum.
+- [x] `tauri build --bundles deb` produces a working 9.4 MiB package with the
+      right dependencies, binary, and icons.
+- [x] Release workflow builds Linux (deb, AppImage), Windows (NSIS), and
+      universal macOS bundles, plus CLI/native-host binaries, and opens a draft
+      release.
+- [x] Signing/notarization env hooks documented (empty secrets must not be
+      passed).
+- [x] Updater plugin compiled and `check_for_updates` wired; no channel/key.
+- [ ] Windows and macOS installers verified on this machine (CI-only).
+- [ ] RPM target (dropped from the workflow to keep it reliable).
+
+## Next: M9 acceptance
+
+- `downpour doctor` checks the database, folders, tools, IPC, and browser
+  manifests.
+- Keyboard focus is visible; reduced motion is honoured; dialogs autofocus.
+- Troubleshooting and accessibility docs exist.
+- i18n status documented honestly (English-only).
 
 ## Lean MVP cut line
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { CalendarClock, Gauge, FolderOpen, ListOrdered, Settings as SettingsIcon, X } from "lucide-react";
+import * as engine from "../lib/engine";
 import type { MediaTools, Settings } from "../lib/engine";
 import { cn } from "../lib/utils";
 
@@ -36,6 +37,20 @@ export function SettingsDialog({
   );
   const [autostart, setAutostart] = useState(settings.autostart);
   const [error, setError] = useState<string | null>(null);
+  const [updateMessage, setUpdateMessage] = useState<string | null>(null);
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
+
+  async function checkUpdates() {
+    setCheckingUpdates(true);
+    try {
+      const status = await engine.checkForUpdates();
+      setUpdateMessage(status.message);
+    } catch (cause) {
+      setUpdateMessage(String(cause));
+    } finally {
+      setCheckingUpdates(false);
+    }
+  }
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -144,6 +159,7 @@ export function SettingsDialog({
                 Download folder
               </span>
               <input
+                autoFocus
                 value={downloadDir}
                 onChange={(event) => setDownloadDir(event.target.value)}
                 spellCheck={false}
@@ -307,6 +323,24 @@ export function SettingsDialog({
                   : "not found — detected only, never bundled"}
               </div>
             </div>
+          </section>
+
+          <section className="flex items-center justify-between rounded-xl border border-line px-3 py-2.5">
+            <div>
+              <div className="text-[12px] font-medium">Updates</div>
+              <div className="text-[10px] text-muted">
+                {updateMessage ??
+                  "Update checks need a signed release channel."}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => void checkUpdates()}
+              disabled={checkingUpdates}
+              className="h-8 rounded-lg border border-line px-3 text-[11px] font-medium text-muted transition-colors hover:text-fg disabled:opacity-50"
+            >
+              {checkingUpdates ? "Checking…" : "Check now"}
+            </button>
           </section>
 
           <section className="flex items-center justify-between rounded-xl border border-line px-3 py-2.5">

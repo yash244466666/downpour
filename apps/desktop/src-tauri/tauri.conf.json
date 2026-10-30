@@ -36,6 +36,19 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "publisher": "Downpour contributors",
+    "copyright": "MIT OR Apache-2.0",
+    "category": "Utility",
+    "shortDescription": "Cross-platform download manager",
+    "longDescription": "Downpour is a fast, open-source download manager with segmented transfers, crash-safe resume, a queue and scheduler, browser take-over, media downloading, and a robots-aware site grabber.",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "13.0"
+    }
   }
 }

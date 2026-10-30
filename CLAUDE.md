@@ -1,7 +1,7 @@
 # CLAUDE.md — Downpour
 
 > Project context for Claude Code. Read this before changing anything.
-> Last updated: 2026-10-31 (M7 complete).
+> Last updated: 2026-10-31 (M8 complete).
 
 ## 1. What this is
 
@@ -10,9 +10,9 @@ manager in the IDM class: 1–32 parallel connections per file, crash-safe resum
 queues, scheduler, bandwidth throttling, browser download take-over, media
 grabbing (HLS/DASH/yt-dlp), and a site grabber — wrapped in a modern dashboard.
 
-**Current status: M7 complete.** Downloads, dashboard, queue, browser take-over,
-media, the CLI grabber, and batch import are live. Do not describe unfinished
-features as working.
+**Current status: M8 complete.** All core features are live and packaging is
+configured; signed/notarized release builds still need maintainer
+credentials. Do not describe unfinished features as working.
 
 | Area | State |
 |---|---|
@@ -34,7 +34,8 @@ features as working.
 | Frontend tests | 20 Vitest unit tests (formatting, filters, mapping) |
 | Media | HLS parser/downloader, AES-128, yt-dlp detection/run; DASH via yt-dlp |
 | Grabber | Robots-aware BFS crawler, batch expansion, persisted job/frontier |
-| Packaging / signing / updater | Tauri shell + icons; no release workflow |
+| Packaging | `.deb` verified locally; release workflow for NSIS/DMG/AppImage |
+| Signing / updater | Hooks documented; updater plugin wired, unconfigured |
 
 If your task touches an unimplemented area, the milestone that owns it is in
 [§11](#11-milestones) and `docs/roadmap.md`.
@@ -284,8 +285,8 @@ Full detail in `docs/roadmap.md`.
 | M5 | IPC server/client, native host, Chromium/Edge extension | ✅ |
 | M6 | yt-dlp, media detection, HLS fallback | ✅ |
 | M7 | Site grabber, batch import | ✅ |
-| M8 | Packaging, signing, notarization, release CI | next |
-| M9 | Accessibility, i18n, diagnostics, docs | |
+| M8 | Packaging, signing, notarization, release CI | ✅ |
+| M9 | Accessibility, i18n, diagnostics, docs | next |
 
 **M1 exit criteria (met):** a real file downloads over one stream; state
 persists; kill the process and resume without re-downloading committed bytes;
@@ -319,9 +320,16 @@ DASH requires yt-dlp.
 depth and page caps, link extraction, a persisted frontier, and batch URL
 import with pattern expansion and preview.
 
-**M8 exit criteria:** reproducible installers for Windows, macOS, and Linux;
-unsigned local builds at minimum; CI artifacts; signing/notarization wired but
-requiring the maintainer's certificates.
+**M8 exit criteria (met):** a Linux `.deb` builds locally; the release
+workflow builds Linux, Windows, and universal macOS bundles plus CLI/native
+host artifacts; signing/notarization env hooks are documented and gated on
+maintainer credentials. Windows and macOS installers are produced by CI, not
+verified on this machine. The updater plugin is wired but has no update
+channel or signing key.
+
+**M9 exit criteria:** `downpour doctor`, visible keyboard focus and reduced
+motion, accessibility notes, troubleshooting/release docs, and an honest list
+of remaining gaps (i18n deferred).
 
 ## 12. Branching and releases
 
@@ -377,6 +385,11 @@ the grabber:
   forces the built-in HLS path.
 - Media tasks must not hold a SQLite `Store` across an await (the future must
   stay `Send`); open it for short updates only.
+- The Rust `tauri` crate and `@tauri-apps/api` must share the same 2.x minor;
+  `tauri build` refuses mismatches. The API is pinned to 2.11.x for the 2.11
+  crate.
+- Release signing must only pass non-empty secrets; empty `APPLE_CERTIFICATE`
+  makes the bundler try to import an empty certificate.
 - The grabber runs in the CLI (not the UI yet). It honours robots.txt and a
   per-host delay by default, filters discovered files through robots too, and
   stores the canonical URL in `grabber_frontier.url_hash` (no hashing).

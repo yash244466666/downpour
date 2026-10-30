@@ -12,12 +12,13 @@ Downpour brings IDM-class downloading — segmented transfers, crash-safe resume
 queues, browser take-over, and media grabbing — to all three desktop platforms
 with an open-source implementation and a modern interface.
 
-> **Status: M7 (grabber and batch import).** Downloads work end to end — probe,
-> 1–32 parallel connections, crash-safe resume, throttling, SHA-256 — with a
-> live dashboard, queue/scheduler, browser take-over, media handling (yt-dlp or
-> the built-in HLS fallback), a robots-aware site grabber in the CLI, and batch
-> URL import with pattern expansion in the UI. Packaging, signing, and
-> auto-update are next. See the [roadmap](docs/roadmap.md).
+> **Status: M8 (packaging).** Downloads work end to end — probe, 1–32 parallel
+> connections, crash-safe resume, throttling, SHA-256 — with a live dashboard,
+> queue/scheduler, browser take-over, media handling, a robots-aware CLI
+> grabber, batch import, and release builds: a Linux `.deb` is verified
+> locally, and the release workflow produces NSIS/DMG/AppImage artifacts with
+> signing hooks documented. Hardening and docs are next. See the
+> [roadmap](docs/roadmap.md).
 
 ## Why Downpour
 
@@ -37,6 +38,9 @@ traditionally Windows-only, closed-source, and visually dated. Downpour is:
 
 - **Persistent queue** with concurrency and per-host limits, priorities,
   Start all / Pause all, and automatic scheduling within a start/stop window.
+- **Packaging**: `pnpm tauri build` produces installers; the `Release` workflow
+  builds Linux, Windows, and universal macOS bundles plus the CLI and native
+  host. See [docs/release.md](docs/release.md).
 - **Site grabber (CLI)**: robots-aware BFS with depth/page caps, same-origin by
   default, per-host delay, and a persisted job/frontier; `--add` queues files.
 - **Batch import (UI)**: paste URLs or `img[001-100].jpg` patterns, preview the
@@ -218,11 +222,13 @@ commands come with M5.
 ### Build installers
 
 ```bash
-pnpm tauri build
+pnpm --dir apps/desktop tauri build --bundles deb
 ```
 
-Bundling currently produces unsigned artifacts. Signing and notarization are
-wired in M8 and require Apple Developer / Windows signing credentials.
+A Linux `.deb` is verified locally. The `Release` workflow builds NSIS, DMG,
+AppImage, and deb artifacts plus the CLI and native host. Bundles are unsigned
+unless the maintainer supplies credentials; see
+[docs/release.md](docs/release.md).
 
 ## Project layout
 
@@ -291,8 +297,8 @@ redirects, auth failures, and traversal filenames.
 | M5 | IPC server/client, native host, Chromium/Edge extension | ✅ |
 | M6 | yt-dlp, media detection, HLS fallback | ✅ |
 | M7 | Site grabber, batch import | ✅ |
-| M8 | Packaging, signing, notarization, release CI | next |
-| M9 | Accessibility, i18n, diagnostics, docs | |
+| M8 | Packaging, signing, notarization, release CI | ✅ |
+| M9 | Accessibility, i18n, diagnostics, docs | next |
 
 Detailed acceptance criteria live in [docs/roadmap.md](docs/roadmap.md).
 

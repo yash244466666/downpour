@@ -930,7 +930,19 @@ fn request_headers(record: &DownloadRecord) -> HeaderMap {
         let Ok(name) = HeaderName::from_bytes(name.as_bytes()) else {
             continue;
         };
-        if name == RANGE || name == ACCEPT_ENCODING || name == IF_RANGE {
+        // The engine owns these: range and encoding semantics, plus framing
+        // headers a stored value must never override.
+        if matches!(
+            name.as_str(),
+            "range"
+                | "accept-encoding"
+                | "if-range"
+                | "host"
+                | "content-length"
+                | "transfer-encoding"
+                | "connection"
+                | "te"
+        ) {
             continue;
         }
         if let Ok(value) = HeaderValue::from_str(&value) {
@@ -1012,8 +1024,11 @@ fn retry_after(response: &reqwest::Response) -> Option<Duration> {
 
 fn estimate_eta(downloaded: u64, total: Option<u64>, speed_bps: u64) -> Option<u64> {
     let total = total?;
-    if speed_bps == 0 || downloaded >= total {
+    if downloaded >= total {
         return Some(0);
+    }
+    if speed_bps == 0 {
+        return None;
     }
     Some((total - downloaded) / speed_bps)
 }

@@ -107,8 +107,9 @@ pub async fn probe(
                 match parsed {
                     Some((0, _, Some(total))) if total > 0 => (Some(total), true),
                     // A 206 we cannot interpret is treated as an unverifiable
-                    // single stream, never as resume support.
-                    _ => (content_length, false),
+                    // single stream, never as resume support. `Content-Length`
+                    // describes only the ranged body, so it is not the size.
+                    _ => (None, false),
                 }
             }
             StatusCode::NO_CONTENT => (Some(0), false),

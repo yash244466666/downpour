@@ -1,54 +1,47 @@
 import { ChevronDown, Inbox } from "lucide-react";
-import type { ComponentType } from "react";
+import type { ComponentType, ReactNode } from "react";
 import {
   Archive,
   File,
   FileText,
   Film,
+  FolderOpen,
   Image,
   Music,
   Package,
   Pause,
   Play,
-  FolderOpen,
-  Ellipsis,
+  Trash2,
+  X,
   type LucideProps,
 } from "lucide-react";
 import type {
-  DemoDownload,
   DownloadKind,
+  DownloadRow,
   DownloadStatus,
-} from "../data/mock";
-import {
-  formatBytes,
-  formatEta,
-  formatSpeed,
-  percent,
-} from "../lib/format";
+} from "../lib/downloads";
+import { formatBytes, formatEta, formatSpeed, percent } from "../lib/format";
 import { cn } from "../lib/utils";
-import {
-  FILTER_LABELS,
-  FILTER_ORDER,
-  type Filter,
-} from "../lib/filters";
+import { FILTER_LABELS, FILTER_ORDER, type Filter } from "../lib/filters";
 
 type IconComponent = ComponentType<LucideProps>;
 
-const KIND_META: Record<
-  DownloadKind,
-  { icon: IconComponent; tile: string }
-> = {
-  video: { icon: Film, tile: "text-violet bg-violet/10 border-violet/20" },
-  audio: { icon: Music, tile: "text-rose bg-rose/10 border-rose/20" },
-  document: {
-    icon: FileText,
-    tile: "text-accent bg-accent-soft border-accent/20",
-  },
-  archive: { icon: Archive, tile: "text-amber bg-amber/10 border-amber/20" },
-  app: { icon: Package, tile: "text-success bg-success-soft border-success/20" },
-  image: { icon: Image, tile: "text-rose bg-rose/10 border-rose/20" },
-  other: { icon: File, tile: "text-muted bg-surface-2 border-line" },
-};
+const KIND_META: Record<DownloadKind, { icon: IconComponent; tile: string }> =
+  {
+    video: { icon: Film, tile: "text-violet bg-violet/10 border-violet/20" },
+    audio: { icon: Music, tile: "text-rose bg-rose/10 border-rose/20" },
+    document: {
+      icon: FileText,
+      tile: "text-accent bg-accent-soft border-accent/20",
+    },
+    archive: { icon: Archive, tile: "text-amber bg-amber/10 border-amber/20" },
+    app: {
+      icon: Package,
+      tile: "text-success bg-success-soft border-success/20",
+    },
+    image: { icon: Image, tile: "text-rose bg-rose/10 border-rose/20" },
+    other: { icon: File, tile: "text-muted bg-surface-2 border-line" },
+  };
 
 const STATUS_META: Record<
   DownloadStatus,
@@ -84,20 +77,34 @@ const STATUS_META: Record<
     dot: "bg-danger",
     bar: "bg-danger",
   },
+  canceled: {
+    label: "Canceled",
+    pill: "text-muted bg-surface-2",
+    dot: "bg-muted/70",
+    bar: "bg-muted/40",
+  },
 };
 
 export function DownloadList({
   downloads,
   total,
   filter,
+  preview,
   onFilter,
   onToggle,
+  onCancel,
+  onRemove,
+  onReveal,
 }: {
-  downloads: DemoDownload[];
+  downloads: DownloadRow[];
   total: number;
   filter: Filter;
+  preview: boolean;
   onFilter: (filter: Filter) => void;
   onToggle: (id: string) => void;
+  onCancel: (id: string) => void;
+  onRemove: (id: string) => void;
+  onReveal: (download: DownloadRow) => void;
 }) {
   return (
     <section className="mt-6 overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
@@ -106,6 +113,11 @@ export function DownloadList({
         <span className="rounded-md bg-surface-2 px-1.5 py-0.5 text-[10px] tabular-nums text-muted">
           {total}
         </span>
+        {preview && (
+          <span className="rounded-md border border-warning/30 bg-warning-soft px-1.5 py-0.5 text-[10px] font-medium text-warning">
+            Preview data
+          </span>
+        )}
 
         <div
           role="tablist"
@@ -133,7 +145,7 @@ export function DownloadList({
 
         <button
           type="button"
-          title="Sorting arrives with the engine"
+          title="Sorting arrives in a later milestone"
           className="hidden items-center gap-1 rounded-lg border border-line px-2.5 py-1.5 text-[11px] text-muted transition-colors hover:text-fg sm:flex"
         >
           Newest
@@ -150,6 +162,9 @@ export function DownloadList({
               key={download.id}
               download={download}
               onToggle={onToggle}
+              onCancel={onCancel}
+              onRemove={onRemove}
+              onReveal={onReveal}
             />
           ))}
         </div>
@@ -167,7 +182,7 @@ function EmptyState({ queryless }: { queryless: boolean }) {
       <p className="mt-3 text-sm font-medium">Nothing here yet</p>
       <p className="mt-1 max-w-xs text-xs text-muted">
         {queryless
-          ? "Add a URL to start a download. The engine arrives in M1."
+          ? "Add a URL to start a download."
           : "No downloads match this filter or search."}
       </p>
     </div>
@@ -177,9 +192,15 @@ function EmptyState({ queryless }: { queryless: boolean }) {
 function DownloadRow({
   download,
   onToggle,
+  onCancel,
+  onRemove,
+  onReveal,
 }: {
-  download: DemoDownload;
+  download: DownloadRow;
   onToggle: (id: string) => void;
+  onCancel: (id: string) => void;
+  onRemove: (id: string) => void;
+  onReveal: (download: DownloadRow) => void;
 }) {
   const kind = KIND_META[download.kind];
   const status = STATUS_META[download.status];
@@ -188,11 +209,20 @@ function DownloadRow({
     download.status === "completed"
       ? 100
       : percent(download.downloaded, download.size);
-  const showPause =
-    download.status === "downloading" || download.status === "paused";
+  const canToggle =
+    download.status === "downloading" ||
+    download.status === "paused" ||
+    download.status === "queued";
+  const canCancel = canToggle;
+  const canRemove =
+    download.status === "completed" ||
+    download.status === "failed" ||
+    download.status === "canceled";
+  const canReveal =
+    download.status === "completed" && Boolean(download.finalPath);
 
   return (
-    <div className="group grid grid-cols-1 gap-3 px-4 py-4 transition-colors hover:bg-surface-2/40 sm:px-5 md:grid-cols-[minmax(0,1.5fr)_minmax(170px,1fr)_120px_120px_76px] md:items-center md:gap-4">
+    <div className="group grid grid-cols-1 gap-3 px-4 py-4 transition-colors hover:bg-surface-2/40 sm:px-5 md:grid-cols-[minmax(0,1.5fr)_minmax(170px,1fr)_120px_120px_122px] md:items-center md:gap-4">
       <div className="flex min-w-0 items-center gap-3">
         <div
           className={cn(
@@ -203,7 +233,10 @@ function DownloadRow({
           <KindIcon className="h-[18px] w-[18px]" />
         </div>
         <div className="min-w-0">
-          <div className="truncate text-[13px] font-medium">
+          <div
+            className="truncate text-[13px] font-medium"
+            title={download.error ?? download.name}
+          >
             {download.name}
           </div>
           <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted">
@@ -211,6 +244,11 @@ function DownloadRow({
             <span aria-hidden="true">·</span>
             <span className="shrink-0">{download.added}</span>
           </div>
+          {download.error && (
+            <div className="mt-0.5 truncate text-[11px] text-danger">
+              {download.error}
+            </div>
+          )}
         </div>
       </div>
 
@@ -269,48 +307,76 @@ function DownloadRow({
       </div>
 
       <div className="flex items-center justify-between md:justify-end md:gap-1">
-        <div className="flex items-center gap-1 md:hidden">
-          <button
-            type="button"
-            disabled
-            aria-label="Open folder (coming soon)"
-            className="grid h-8 w-8 cursor-not-allowed place-items-center rounded-lg border border-line text-muted opacity-40"
-          >
-            <FolderOpen className="h-4 w-4" />
-          </button>
-        </div>
         <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => onToggle(download.id)}
-            disabled={!showPause && download.status !== "queued"}
-            aria-label={
-              download.status === "downloading" ? "Pause download" : "Resume download"
+          <RowButton
+            label={
+              download.status === "downloading"
+                ? "Pause download"
+                : "Resume download"
             }
-            className={cn(
-              "grid h-8 w-8 place-items-center rounded-lg border border-line text-muted transition-colors",
-              showPause || download.status === "queued"
-                ? "hover:bg-surface-2 hover:text-fg"
-                : "cursor-not-allowed opacity-40",
-            )}
+            disabled={!canToggle}
+            onClick={() => onToggle(download.id)}
           >
             {download.status === "downloading" ? (
               <Pause className="h-4 w-4" />
             ) : (
               <Play className="h-4 w-4" />
             )}
-          </button>
-          <button
-            type="button"
-            aria-label="More actions"
-            title="More actions arrive with the engine"
-            className="grid h-8 w-8 place-items-center rounded-lg border border-line text-muted transition-colors hover:bg-surface-2 hover:text-fg"
+          </RowButton>
+          <RowButton
+            label="Cancel download"
+            disabled={!canCancel}
+            onClick={() => onCancel(download.id)}
           >
-            <Ellipsis className="h-4 w-4" />
-          </button>
+            <X className="h-4 w-4" />
+          </RowButton>
+          <RowButton
+            label="Show in folder"
+            disabled={!canReveal}
+            onClick={() => onReveal(download)}
+          >
+            <FolderOpen className="h-4 w-4" />
+          </RowButton>
+          <RowButton
+            label="Remove from list"
+            disabled={!canRemove}
+            onClick={() => onRemove(download.id)}
+          >
+            <Trash2 className="h-4 w-4" />
+          </RowButton>
         </div>
       </div>
     </div>
+  );
+}
+
+function RowButton({
+  children,
+  label,
+  onClick,
+  disabled,
+}: {
+  children: ReactNode;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      title={label}
+      className={cn(
+        "grid h-8 w-8 place-items-center rounded-lg border border-line text-muted transition-colors",
+        disabled
+          ? "cursor-not-allowed opacity-35"
+          : "hover:bg-surface-2 hover:text-fg",
+      )}
+    >
+      {children}
+    </button>
   );
 }
 

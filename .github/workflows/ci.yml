@@ -72,5 +72,8 @@ jobs:
       - name: Typecheck
         run: pnpm --dir apps/desktop typecheck
 
+      - name: Test
+        run: pnpm --dir apps/desktop test
+
       - name: Build
         run: pnpm --dir apps/desktop build

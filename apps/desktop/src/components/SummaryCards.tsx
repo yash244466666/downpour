@@ -6,14 +6,14 @@ import {
   Gauge,
   type LucideProps,
 } from "lucide-react";
-import type { DemoDownload } from "../data/mock";
+import type { DownloadRow } from "../lib/downloads";
 import { formatBytes, formatSpeed } from "../lib/format";
 import { cn } from "../lib/utils";
 import { Sparkline } from "./Sparkline";
 
 type IconComponent = ComponentType<LucideProps>;
 
-export function SummaryCards({ downloads }: { downloads: DemoDownload[] }) {
+export function SummaryCards({ downloads }: { downloads: DownloadRow[] }) {
   const active = downloads.filter((item) => item.status === "downloading");
   const paused = downloads.filter((item) => item.status === "paused").length;
   const queued = downloads.filter((item) => item.status === "queued").length;

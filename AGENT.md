@@ -9,10 +9,11 @@
 Ship Downpour milestone by milestone. Each milestone must leave the repository
 gate-clean and honest about what works.
 
-- **Current:** M2 complete (2026-10-31). Multi-connection transfers over a
-  dynamic segment queue, throttling, per-segment retries, and SIGKILL resume.
-- **Next:** M3 — wire the dashboard to the engine, tray, notifications,
-  settings. Acceptance criteria are in `docs/roadmap.md`.
+- **Current:** M3 complete (2026-10-31). The desktop dashboard is wired to the
+  engine with settings, tray, notifications, and frontend unit tests.
+- **Next:** M4 — queue, priorities, categories, scheduler, autostart,
+  single-instance, updater wiring. Acceptance criteria are in
+  `docs/roadmap.md`.
 - **Not implemented:** IPC server, browser extension, media pipeline, crawler,
   packaging. Do not claim otherwise in code, docs, commits, or chat.
 
@@ -96,6 +97,7 @@ cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 pnpm --dir apps/desktop typecheck
+pnpm --dir apps/desktop test
 pnpm --dir apps/desktop build
 ```
 

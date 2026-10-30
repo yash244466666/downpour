@@ -58,7 +58,7 @@ version can move it into a daemon without rewriting the transfer code.
 5. **Finalize** — fsync, length check, optional SHA-256, atomic rename, fsync
    the parent directory on Unix, then mark complete.
 
-### Implemented in M1–M2
+### Implemented in M1–M3
 
 `probe`, the single writer thread, checkpointing, resume, pause, finalize, the
 CLI, segmented transfer, and throttling are live in `downpour-core` /
@@ -76,9 +76,20 @@ CLI, segmented transfer, and throttling are live in `downpour-core` /
 - Throttling is a token bucket shared by the transfer's workers, applied to
   both the segmented and single-stream paths.
 
-One `Engine` drives one download at a time; concurrency across downloads
-arrives with the queue (M4). Every run re-probes, so a short-lived signed URL
-is refreshed before each resume.
+One `Engine` drives one download at a time; the desktop app gives each running
+download its own engine (and SQLite connection), so the UI stays responsive.
+Queue-level concurrency arrives in M4. Every run re-probes, so a short-lived
+signed URL is refreshed before each resume.
+
+### Desktop shell (M3)
+
+Tauri commands are thin: `list_downloads`, `add_download`, `start_download`,
+`pause_download`, `cancel_download`, `remove_download`, `get_settings`,
+`set_settings`, and `reveal_path`. Each command opens a short-lived engine with
+`Engine::open_without_recovery`; crash recovery runs exactly once at app
+startup. The webview polls the list at ~1 Hz and receives progress events for
+in-process transfers. A browser-only Vite preview keeps mock data and labels it
+"Preview data".
 
 ### Crash safety
 

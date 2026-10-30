@@ -1,4 +1,4 @@
-import type { DownloadKind } from "../data/mock";
+import type { DownloadKind } from "./downloads";
 
 export function formatBytes(bytes: number, decimals = 1): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";

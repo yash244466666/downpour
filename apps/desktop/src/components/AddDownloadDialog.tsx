@@ -10,11 +10,13 @@ import {
 import { cn } from "../lib/utils";
 
 export function AddDownloadDialog({
+  defaultDir,
   onClose,
   onAdd,
 }: {
+  defaultDir: string;
   onClose: () => void;
-  onAdd: (url: string, connections: number) => void;
+  onAdd: (url: string, connections: number, startNow: boolean) => void;
 }) {
   const [url, setUrl] = useState("");
   const [connections, setConnections] = useState(8);
@@ -39,7 +41,7 @@ export function AddDownloadDialog({
       return;
     }
     setError(null);
-    onAdd(trimmed, connections);
+    onAdd(trimmed, connections, startNow);
   }
 
   return (
@@ -108,13 +110,13 @@ export function AddDownloadDialog({
             <FolderOpen className="h-4 w-4 shrink-0 text-muted" />
             <div className="min-w-0 flex-1">
               <div className="text-[11px] text-muted">Save to</div>
-              <div className="truncate text-[12px]">~/Downloads</div>
+              <div className="truncate text-[12px]">{defaultDir}</div>
             </div>
             <button
               type="button"
               disabled
               className="cursor-not-allowed rounded-md border border-line px-2 py-1 text-[10px] text-muted opacity-60"
-              title="Destination picker arrives with the engine"
+              title="Change the default folder in Settings"
             >
               Change
             </button>
@@ -176,8 +178,8 @@ export function AddDownloadDialog({
           <div className="flex gap-2 rounded-lg border border-line bg-surface-2 px-3 py-2.5 text-[11px] leading-relaxed text-muted">
             <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             <span>
-              This is an M0 UI preview. Submitting adds a local mock entry; the
-              real engine, auth, proxy, and checksum options arrive in M1–M2.
+              The engine writes a .downpour-part file and renames it on
+              completion. Auth, proxy, and checksum options arrive later.
             </span>
           </div>
         </div>

@@ -270,6 +270,7 @@ impl IpcClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use serde_json::json;
 
     #[cfg(unix)]

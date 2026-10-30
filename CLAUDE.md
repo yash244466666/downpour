@@ -1,7 +1,7 @@
 # CLAUDE.md — Downpour
 
 > Project context for Claude Code. Read this before changing anything.
-> Last updated: 2026-10-31 (M6 complete).
+> Last updated: 2026-10-31 (M7 complete).
 
 ## 1. What this is
 
@@ -10,13 +10,13 @@ manager in the IDM class: 1–32 parallel connections per file, crash-safe resum
 queues, scheduler, bandwidth throttling, browser download take-over, media
 grabbing (HLS/DASH/yt-dlp), and a site grabber — wrapped in a modern dashboard.
 
-**Current status: M6 complete.** Downloads, the dashboard, queue, browser
-take-over, and media handling are live. Do not describe unfinished features
-as working.
+**Current status: M7 complete.** Downloads, dashboard, queue, browser take-over,
+media, the CLI grabber, and batch import are live. Do not describe unfinished
+features as working.
 
 | Area | State |
 |---|---|
-| Rust workspace | Compiles; 110 tests pass; clippy `-D warnings` clean |
+| Rust workspace | Compiles; 117 tests pass; clippy `-D warnings` clean |
 | Shared types / IPC contract | DTOs, error codes, framing, handshake types |
 | SQLite schema + migrations | Initial schema, WAL, STRICT tables, download queries |
 | Segment planner / filename safety | Planner exists but drives M2; filename hardening live |
@@ -33,7 +33,7 @@ as working.
 | Startup | Autostart toggle and single-instance focus |
 | Frontend tests | 20 Vitest unit tests (formatting, filters, mapping) |
 | Media | HLS parser/downloader, AES-128, yt-dlp detection/run; DASH via yt-dlp |
-| Grabber | Batch-pattern expansion only (M7) |
+| Grabber | Robots-aware BFS crawler, batch expansion, persisted job/frontier |
 | Packaging / signing / updater | Tauri shell + icons; no release workflow |
 
 If your task touches an unimplemented area, the milestone that owns it is in
@@ -264,9 +264,10 @@ pnpm --dir apps/desktop build
 - Crash tests use a spawned CLI process + SIGKILL (`taskkill /F` on Windows)
   and compare SHA-256 against the source.
 - UI tests currently stop at typecheck/build; Vitest + Playwright land with M3.
-- Current total: **110 Rust tests** (42 core, 22 engine integration, 1 CLI
+- Current total: **117 Rust tests** (42 core, 22 engine integration, 1 CLI
   crash, 6 store, 6 testkit, 4 types, 6 IPC transport/protocol, 11 media,
-  plus grabber/native-host units) and **20 frontend tests** (Vitest).
+  11 grabber + 2 crawl integration, plus native-host units) and **20 frontend
+  tests** (Vitest).
 - Never add a test that downloads from the public internet.
 
 ## 11. Milestones
@@ -282,8 +283,8 @@ Full detail in `docs/roadmap.md`.
 | M4 | Queue, scheduler, categories, autostart, single-instance | ✅ |
 | M5 | IPC server/client, native host, Chromium/Edge extension | ✅ |
 | M6 | yt-dlp, media detection, HLS fallback | ✅ |
-| M7 | Site grabber, batch import | next |
-| M8 | Packaging, signing, notarization, release CI | |
+| M7 | Site grabber, batch import | ✅ |
+| M8 | Packaging, signing, notarization, release CI | next |
 | M9 | Accessibility, i18n, diagnostics, docs | |
 
 **M1 exit criteria (met):** a real file downloads over one stream; state
@@ -314,9 +315,13 @@ downloads a stream (highest variant, AES-128, SAMPLE-AES refused). Managed
 yt-dlp auto-download and user-facing quality selection are **not** shipped;
 DASH requires yt-dlp.
 
-**M7 exit criteria:** a robots-aware, rate-limited site grabber with depth and
-page caps, link extraction, a persisted frontier, and batch URL import with
-pattern expansion.
+**M7 exit criteria (met):** a robots-aware, rate-limited site grabber with
+depth and page caps, link extraction, a persisted frontier, and batch URL
+import with pattern expansion and preview.
+
+**M8 exit criteria:** reproducible installers for Windows, macOS, and Linux;
+unsigned local builds at minimum; CI artifacts; signing/notarization wired but
+requiring the maintainer's certificates.
 
 ## 12. Branching and releases
 
@@ -372,6 +377,11 @@ the grabber:
   forces the built-in HLS path.
 - Media tasks must not hold a SQLite `Store` across an await (the future must
   stay `Send`); open it for short updates only.
+- The grabber runs in the CLI (not the UI yet). It honours robots.txt and a
+  per-host delay by default, filters discovered files through robots too, and
+  stores the canonical URL in `grabber_frontier.url_hash` (no hashing).
+- Batch import caps expansion at 500 URLs in the UI and 10,000 in the pattern
+  expander.
 - The desktop scheduler ticks every 1.5 s, starts **queued** downloads only
   (never paused ones) within concurrency/per-host limits, and pauses running
   transfers outside the schedule window. Do not auto-start paused rows; that

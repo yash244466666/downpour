@@ -151,6 +151,17 @@ yt-dlp fails with a clear message. Media jobs reuse the `downloads` rows and
 report progress through the same UI; they are not engine transfers, so pause
 stops and resume restarts them.
 
+## Grabber (M7)
+
+`downpour-grabber` crawls breadth-first from a seed. It fetches robots.txt once
+per origin, refuses disallowed pages and files, enforces depth/page caps and a
+per-host delay, and stays same-origin by default. Links come from anchors,
+`src`/`srcset`, media elements, and inline CSS `url()`. The CLI persists a
+`grabber_jobs` row and every discovered page in `grabber_frontier` (the
+canonical URL is the key). `--add` queues discovered files as normal downloads.
+The UI batch-import dialog expands IDM-style patterns through the same
+`expand_patterns` helper and adds up to 500 URLs.
+
 ## Browser integration
 
 The native host is intentionally small: frame stdio, validate the caller,

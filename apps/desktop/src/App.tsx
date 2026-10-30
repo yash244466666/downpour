@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AddDownloadDialog } from "./components/AddDownloadDialog";
+import { BatchImportDialog } from "./components/BatchImportDialog";
 import { DownloadList } from "./components/DownloadList";
 import { Header } from "./components/Header";
 import { SettingsDialog } from "./components/SettingsDialog";
@@ -66,6 +67,7 @@ export default function App() {
   const [filter, setFilter] = useState<Filter>("all");
   const [category, setCategory] = useState<DownloadKind | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [batchOpen, setBatchOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -233,6 +235,40 @@ export default function App() {
     }
   }
 
+  async function addBatch(urls: string[]) {
+    if (preview) {
+      setDownloads((list) => [
+        ...urls.slice(0, 500).map((url) => mockRow(url, settings.connections)),
+        ...list,
+      ]);
+      setBatchOpen(false);
+      setToast("Preview mode — start the Tauri app to download.");
+      return;
+    }
+
+    let added = 0;
+    let failed = 0;
+    for (const url of urls.slice(0, 500)) {
+      try {
+        await engine.addDownload({
+          url,
+          startNow: true,
+          directory: settings.downloadDir,
+        });
+        added += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+    setBatchOpen(false);
+    setToast(
+      failed > 0
+        ? `Queued ${added} downloads; ${failed} failed.`
+        : `Queued ${added} downloads.`,
+    );
+    await refresh();
+  }
+
   async function changePriority(id: string, delta: number) {
     const download = downloads.find((item) => item.id === id);
     if (!download || preview) return;
@@ -352,6 +388,7 @@ export default function App() {
               onPriority={(id, delta) => void changePriority(id, delta)}
               onStartAll={() => void startAll()}
               onPauseAll={() => void pauseAll()}
+              onBatch={() => setBatchOpen(true)}
             />
           </div>
         </main>
@@ -366,6 +403,13 @@ export default function App() {
           onAdd={(url, connections, startNow) =>
             void addDownload(url, connections, startNow)
           }
+        />
+      )}
+
+      {batchOpen && (
+        <BatchImportDialog
+          onClose={() => setBatchOpen(false)}
+          onAdd={(urls) => void addBatch(urls)}
         />
       )}
 

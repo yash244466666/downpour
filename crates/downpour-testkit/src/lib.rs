@@ -18,6 +18,7 @@
 //! | `/disposition/{size}?name=...` | serves a file with that `Content-Disposition` name |
 //! | `/slow/{size}/{chunk_kb}/{delay_ms}` | range-aware stream with a delay per chunk (records `Range` headers) |
 //! | `/hls/master.m3u8`, `/hls/media.m3u8`, `/hls/seg/{n}` | HLS fixtures |
+//! | `/site/*`, `/robots.txt` | crawler fixtures (robots, depth, files) |
 //! | `/redirect/{hops}/{size}` | `hops` redirects, then `/ok/{size}` |
 //! | `/auth/{size}` | always `401` |
 //!
@@ -126,6 +127,14 @@ impl TestServer {
             .route("/hls/master.m3u8", get(hls_master))
             .route("/hls/media.m3u8", get(hls_media))
             .route("/hls/seg/{n}", get(hls_segment))
+            .route("/robots.txt", get(site_robots))
+            .route("/site/index.html", get(site_index))
+            .route("/site/a.html", get(site_a))
+            .route("/site/b.html", get(site_b))
+            .route("/site/file1.zip", get(site_file_one))
+            .route("/site/file2.zip", get(site_file_two))
+            .route("/site/img/pic.png", get(site_picture))
+            .route("/site/private/secret.zip", get(site_secret))
             .route("/redirect/{hops}/{size}", get(redirect))
             .route("/auth/{size}", get(auth))
             .with_state(state.clone());
@@ -417,6 +426,64 @@ async fn hls_segment(Path(n): Path<u64>) -> Response {
     let start = n.saturating_mul(1024);
     let body = pattern_body(start, start + 1023, 0);
     ([(header::CONTENT_TYPE, "video/mp2t")], body).into_response()
+}
+
+fn html_response(body: &str) -> Response {
+    (
+        [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        body.to_owned(),
+    )
+        .into_response()
+}
+
+async fn site_robots() -> Response {
+    (
+        [(header::CONTENT_TYPE, "text/plain")],
+        "User-agent: *\nDisallow: /site/private\n",
+    )
+        .into_response()
+}
+
+async fn site_index() -> Response {
+    html_response(
+        r##"<html><body>
+        <a href="a.html">next</a>
+        <a href="file1.zip">one</a>
+        <a href="file2.zip">two</a>
+        <a href="private/secret.zip">secret</a>
+        <a href="https://example.invalid/out.html">outside</a>
+        </body></html>"##,
+    )
+}
+
+async fn site_a() -> Response {
+    html_response(
+        r##"<html><body>
+        <a href="b.html">deeper</a>
+        <img src="img/pic.png">
+        <a href="index.html#top">already seen</a>
+        </body></html>"##,
+    )
+}
+
+async fn site_b() -> Response {
+    html_response(r#"<html><body><a href="index.html">home</a></body></html>"#)
+}
+
+async fn site_file_one() -> Response {
+    ([(header::CONTENT_TYPE, "application/zip")], vec![1_u8; 64]).into_response()
+}
+
+async fn site_file_two() -> Response {
+    ([(header::CONTENT_TYPE, "application/zip")], vec![2_u8; 64]).into_response()
+}
+
+async fn site_picture() -> Response {
+    ([(header::CONTENT_TYPE, "image/png")], vec![3_u8; 64]).into_response()
+}
+
+async fn site_secret() -> Response {
+    ([(header::CONTENT_TYPE, "application/zip")], vec![4_u8; 64]).into_response()
 }
 
 async fn disposition(

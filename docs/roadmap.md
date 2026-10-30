@@ -11,8 +11,8 @@ Status as of 2026-10-31.
 | **M4** | Queue, priorities, category filters, scheduler, autostart, single-instance | ✅ complete |
 | **M5** | IPC server/client, native-messaging host, Chromium/Edge extension takeover | ✅ complete |
 | **M6** | yt-dlp integration, media detection UI, HLS fallback | ✅ complete |
-| **M7** | Site grabber + batch import/expansion | ⏳ next |
-| **M8** | Packaging: NSIS per-user, universal DMG, AppImage/deb/rpm; signing/notarization; release CI | ⬜ |
+| **M7** | Site grabber + batch import/expansion | ✅ complete |
+| **M8** | Packaging: NSIS per-user, universal DMG, AppImage/deb/rpm; signing/notarization; release CI | ⏳ next |
 | **M9** | Hardening: accessibility, i18n, `downpour doctor`, docs | ⬜ |
 
 ## Definition of done for M0
@@ -107,13 +107,24 @@ Concurrency across downloads is **not** part of M2; it lands with the queue.
       detection only.
 - [ ] User-facing quality selection — highest variant only.
 
-## Next: M7 acceptance
+## Definition of done for M7
 
-- A robots-aware crawler with depth/page caps, per-host delay, and a persisted
-  frontier.
-- Link extraction from HTML, images/srcset, video/source, and CSS `url()`.
-- Batch URL import with `img[001-100].jpg`-style expansion and preview.
-- No auth bypass, no forms, identifiable user agent.
+- [x] Robots-aware BFS crawler with depth/page caps and per-host delay.
+- [x] Link extraction from `<a>`, `<img srcset>`, video/audio/source, and CSS
+      `url()`; forms are treated as links but never submitted.
+- [x] Same-origin by default; files are filtered through robots.txt too.
+- [x] Persisted `grabber_jobs` and `grabber_frontier` rows.
+- [x] CLI `grab` lists found files and `--add` queues them.
+- [x] Batch import dialog with pattern expansion, dedupe, preview, and a 500
+      URL cap.
+- [ ] Grabber UI (the current UI has batch import, not a crawl dialog).
+
+## Next: M8 acceptance
+
+- `tauri build` produces NSIS, DMG, AppImage, deb, and rpm artifacts.
+- Release workflow uploads artifacts for the three platforms.
+- Signing/notarization hooks documented and gated on maintainer credentials.
+- Updater plugin wired and documented (keys required).
 
 ## Lean MVP cut line
 

@@ -15,6 +15,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 downpour-core = { path = "../../../crates/downpour-core" }
+downpour-grabber = { path = "../../../crates/downpour-grabber" }
 downpour-ipc = { path = "../../../crates/downpour-ipc" }
 downpour-media = { path = "../../../crates/downpour-media" }
 downpour-store = { path = "../../../crates/downpour-store" }

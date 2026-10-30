@@ -12,12 +12,12 @@ Downpour brings IDM-class downloading — segmented transfers, crash-safe resume
 queues, browser take-over, and media grabbing — to all three desktop platforms
 with an open-source implementation and a modern interface.
 
-> **Status: M6 (media).** Downloads work end to end — probe, 1–32 parallel
-> connections, crash-safe resume, throttling, SHA-256 — with a live dashboard,
-> queue/scheduler, browser take-over, and media handling: HLS URLs use yt-dlp
-> when installed or a built-in HLS fallback, and the extension sniffs
-> `.m3u8`/`.mpd` manifests. The site grabber is **not implemented yet**. See
-> the [roadmap](docs/roadmap.md).
+> **Status: M7 (grabber and batch import).** Downloads work end to end — probe,
+> 1–32 parallel connections, crash-safe resume, throttling, SHA-256 — with a
+> live dashboard, queue/scheduler, browser take-over, media handling (yt-dlp or
+> the built-in HLS fallback), a robots-aware site grabber in the CLI, and batch
+> URL import with pattern expansion in the UI. Packaging, signing, and
+> auto-update are next. See the [roadmap](docs/roadmap.md).
 
 ## Why Downpour
 
@@ -37,6 +37,10 @@ traditionally Windows-only, closed-source, and visually dated. Downpour is:
 
 - **Persistent queue** with concurrency and per-host limits, priorities,
   Start all / Pause all, and automatic scheduling within a start/stop window.
+- **Site grabber (CLI)**: robots-aware BFS with depth/page caps, same-origin by
+  default, per-host delay, and a persisted job/frontier; `--add` queues files.
+- **Batch import (UI)**: paste URLs or `img[001-100].jpg` patterns, preview the
+  expansion, and queue them.
 - **Media handling**: HLS manifests download with the built-in fallback
   (quality = highest variant, AES-128 supported, SAMPLE-AES refused); yt-dlp is
   detected and used when available, with cookies passed via a 0600 file.
@@ -186,6 +190,15 @@ cargo build -p downpour-nm-host -p downpour-cli
 Then load `extensions/browser/chromium` unpacked in Chrome/Edge and start
 Downpour once. See [extensions/browser/README.md](extensions/browser/README.md).
 
+### Grab a site from the CLI
+
+```bash
+./target/debug/downpour grab https://example.com/gallery/ --depth 2 --pages 50
+./target/debug/downpour grab https://example.com/gallery/ --add   # queue found files
+```
+
+robots.txt is honoured by default; `--no-robots` exists for sites you control.
+
 ### Download something from the CLI
 
 ```bash
@@ -250,7 +263,7 @@ with deterministic byte patterns — no public-internet tests. Crash tests kill 
 CLI process at random offsets and compare SHA-256 against the source once the
 engine lands.
 
-Current state: **110 Rust tests and 20 frontend unit tests pass**, clippy is
+Current state: **117 Rust tests and 20 frontend unit tests pass**, clippy is
 warning-free, and the frontend typechecks and builds. Engine tests cover byte-exact transfers, segmented
 concurrency, throttling, pause/resume, engine restarts, a real SIGKILL resume,
 ETag/content changes, `429`, dropped connections, permanent truncation,
@@ -277,8 +290,8 @@ redirects, auth failures, and traversal filenames.
 | M4 | Queue, scheduler, categories, autostart, single-instance | ✅ |
 | M5 | IPC server/client, native host, Chromium/Edge extension | ✅ |
 | M6 | yt-dlp, media detection, HLS fallback | ✅ |
-| M7 | Site grabber, batch import | next |
-| M8 | Packaging, signing, notarization, release CI | |
+| M7 | Site grabber, batch import | ✅ |
+| M8 | Packaging, signing, notarization, release CI | next |
 | M9 | Accessibility, i18n, diagnostics, docs | |
 
 Detailed acceptance criteria live in [docs/roadmap.md](docs/roadmap.md).

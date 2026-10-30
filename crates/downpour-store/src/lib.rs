@@ -5,6 +5,7 @@
 //! a dedicated thread (see the engine); readers may use a second connection.
 
 pub mod downloads;
+pub mod grabber;
 mod migrations;
 
 use std::path::Path;

@@ -1,0 +1,130 @@
+export type DownloadKind =
+  | "video"
+  | "audio"
+  | "document"
+  | "archive"
+  | "app"
+  | "image"
+  | "other";
+
+export type DownloadStatus =
+  | "downloading"
+  | "paused"
+  | "queued"
+  | "completed"
+  | "failed";
+
+export interface DemoDownload {
+  id: string;
+  name: string;
+  host: string;
+  kind: DownloadKind;
+  size: number;
+  downloaded: number;
+  speed: number;
+  connections: number;
+  status: DownloadStatus;
+  eta?: number;
+  added: string;
+}
+
+export const initialDownloads: DemoDownload[] = [
+  {
+    id: "d1",
+    name: "ubuntu-24.04.3-desktop-amd64.iso",
+    host: "releases.ubuntu.com",
+    kind: "app",
+    size: 6_000_000_000,
+    downloaded: 4_080_000_000,
+    speed: 24_600_000,
+    connections: 8,
+    status: "downloading",
+    eta: 78,
+    added: "4 min ago",
+  },
+  {
+    id: "d2",
+    name: "sundarbans-4k-documentary.mp4",
+    host: "cdn.mediaarchive.org",
+    kind: "video",
+    size: 5_900_000_000,
+    downloaded: 1_888_000_000,
+    speed: 11_200_000,
+    connections: 8,
+    status: "downloading",
+    eta: 358,
+    added: "11 min ago",
+  },
+  {
+    id: "d3",
+    name: "downpour-design-system.zip",
+    host: "github.com",
+    kind: "archive",
+    size: 84_000_000,
+    downloaded: 52_000_000,
+    speed: 0,
+    connections: 4,
+    status: "paused",
+    added: "26 min ago",
+  },
+  {
+    id: "d4",
+    name: "annual-report-2026.pdf",
+    host: "files.example.org",
+    kind: "document",
+    size: 24_800_000,
+    downloaded: 24_800_000,
+    speed: 0,
+    connections: 1,
+    status: "completed",
+    added: "Today, 09:12",
+  },
+  {
+    id: "d5",
+    name: "node-v24.22.2-linux-x64.tar.xz",
+    host: "nodejs.org",
+    kind: "archive",
+    size: 28_100_000,
+    downloaded: 28_100_000,
+    speed: 0,
+    connections: 1,
+    status: "completed",
+    added: "Today, 08:47",
+  },
+  {
+    id: "d6",
+    name: "bengali-typing-practice.mp3",
+    host: "audio.example.net",
+    kind: "audio",
+    size: 12_400_000,
+    downloaded: 0,
+    speed: 0,
+    connections: 8,
+    status: "queued",
+    added: "Queued",
+  },
+  {
+    id: "d7",
+    name: "manjaro-kde-26.0.iso",
+    host: "mirror.manjaro.org",
+    kind: "app",
+    size: 4_200_000_000,
+    downloaded: 0,
+    speed: 0,
+    connections: 8,
+    status: "queued",
+    added: "Queued",
+  },
+  {
+    id: "d8",
+    name: "sundarbans-photo-pack.7z",
+    host: "archive.example.com",
+    kind: "image",
+    size: 1_240_000_000,
+    downloaded: 0,
+    speed: 0,
+    connections: 8,
+    status: "failed",
+    added: "Yesterday",
+  },
+];

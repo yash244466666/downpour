@@ -1,0 +1,19 @@
+[package]
+name = "downpour-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Command-line client for the Downpour engine"
+
+[[bin]]
+name = "downpour"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+downpour-ipc = { path = "../../crates/downpour-ipc" }
+downpour-types = { path = "../../crates/downpour-types" }
+serde_json.workspace = true
+tokio.workspace = true

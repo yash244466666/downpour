@@ -1,0 +1,14 @@
+{
+  "name": "downpour",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.0.0",
+  "scripts": {
+    "dev": "pnpm --dir apps/desktop dev",
+    "build": "pnpm --dir apps/desktop build",
+    "tauri": "pnpm --dir apps/desktop tauri",
+    "test:ui": "pnpm --dir apps/desktop test",
+    "lint:ui": "pnpm --dir apps/desktop lint",
+    "check:rust": "cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace"
+  }
+}

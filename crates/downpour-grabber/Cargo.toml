@@ -1,0 +1,19 @@
+[package]
+name = "downpour-grabber"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Robots-aware site crawler and batch URL expansion for Downpour"
+
+[dependencies]
+downpour-types = { path = "../downpour-types" }
+reqwest.workspace = true
+scraper.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+texting_robots.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+url.workspace = true

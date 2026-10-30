@@ -1,0 +1,313 @@
+# CLAUDE.md — Downpour
+
+> Project context for Claude Code. Read this before changing anything.
+> Last updated: 2026-10-30 (M0 complete).
+
+## 1. What this is
+
+**Downpour** is a cross-platform (Windows 10/11, macOS 13+, Linux) download
+manager in the IDM class: 1–32 parallel connections per file, crash-safe resume,
+queues, scheduler, bandwidth throttling, browser download take-over, media
+grabbing (HLS/DASH/yt-dlp), and a site grabber — wrapped in a modern dashboard.
+
+**Current status: M0 complete.** The repository is a scaffold plus a verified UI
+preview. Do not describe unfinished features as working.
+
+| Area | State |
+|---|---|
+| Rust workspace | Compiles; 23 tests pass; clippy `-D warnings` clean |
+| Shared types / IPC contract | DTOs, error codes, framing, handshake types |
+| SQLite schema + migrations | Complete initial schema, WAL, STRICT tables |
+| Segment planner / filename safety | Implemented with unit + proptest coverage |
+| Transfer engine | **Not implemented** — no probe, no HTTP transfer, no resume yet |
+| IPC server/client | **Not implemented** — protocol types only |
+| Desktop UI | Dashboard with **mock data**; `engine_info` Tauri command works |
+| Browser extension / native host | **Not implemented** — stdio framing only |
+| Media / grabber | Classification + batch-pattern expansion only |
+| Packaging / signing / updater | Tauri shell + icons; no release workflow |
+
+If your task touches an unimplemented area, the milestone that owns it is in
+[§11](#11-milestones) and `docs/roadmap.md`.
+
+## 2. Read these first
+
+1. `docs/architecture.md` — process model, pipeline, crash safety.
+2. `docs/ipc-protocol.md` — wire format, methods, events, error codes.
+3. `docs/roadmap.md` — milestone state and M1 acceptance criteria.
+4. `docs/adr/0001-stack.md` and `docs/adr/0002-writer-thread.md` — decisions
+   that are not up for casual revision.
+5. `AGENT.md` — working agreement, branch protocol, definition of done.
+
+## 3. Non-negotiable invariants
+
+1. **The engine has no Tauri/UI dependency.** `downpour-core` must remain usable
+   from a headless daemon. UI concerns never enter it.
+2. **One writer thread per download owns the only file handle.** Never
+   `try_clone()` (Unix duplicates and Windows duplicates both share the file
+   offset), never share a `tokio::fs::File` with `seek` + `write`, never mmap.
+   Segment tasks send `(offset, Bytes)` over a bounded channel.
+3. **Checkpoint ordering:** `sync_data()` the file **first**, then commit
+   segment offsets to SQLite in one transaction. A durable DB offset must never
+   be ahead of durable bytes.
+4. **Trust the response, not the header.** Range support is proven by a real
+   `206` + valid `Content-Range`; `Accept-Ranges: bytes` alone means nothing.
+   `Accept-Encoding: identity` is mandatory for byte-range work.
+5. **No multi-connection for no-range servers.** Do not fake `.part1/.part2`.
+   Use one stream and show "server does not support ranges".
+6. **Server-provided filenames are hostile.** Sanitize reserved Windows names,
+   illegal characters, trailing dots/spaces, control characters, NTFS ADS
+   colons; reject `..` and absolute paths; canonicalize the destination parent
+   and verify the final path stays under it.
+7. **Secrets never reach logs.** No tokens, cookies, `Authorization`, or signed
+   URLs in logs, error messages, or crash reports. Persisted secrets use the OS
+   keyring; cookies are ephemeral by default.
+8. **No DRM circumvention and no paywall bypass.** HLS/DASH with SAMPLE-AES,
+   Widevine, or PlayReady must be refused. `ffmpeg` is detected, never bundled.
+   `yt-dlp` is optional, user-initiated, checksum-verified.
+9. **Tauri 2 stable only.** Do not adopt the Tauri 3 alpha. Keep capabilities
+   minimal; no `shell`, `fs`, `http`, or `sql` plugins — the engine owns those.
+10. **The UI never touches SQLite, the filesystem, HTTP, or processes.** All
+    actions go through Tauri commands / engine IPC. Error codes come from Rust;
+    the UI translates them.
+
+## 4. Repository map
+
+```
+downpour/
+├─ Cargo.toml                  workspace, resolver 3, edition 2024
+├─ crates/
+│  ├─ downpour-types/          serde DTOs, ErrorCode, PROTOCOL_VERSION
+│  ├─ downpour-store/          SQLite open/config/migrations
+│  ├─ downpour-core/           engine (planner, filename; transfer TODO)
+│  ├─ downpour-ipc/            JSON-line protocol + framing
+│  ├─ downpour-media/          media classification, yt-dlp/ffmpeg detection
+│  ├─ downpour-grabber/        batch pattern expansion (crawler TODO)
+│  ├─ downpour-nm-host/        browser native-messaging binary (framing only)
+│  └─ downpour-testkit/        fault-injecting range server
+├─ apps/
+│  ├─ cli/                     `downpour` CLI (info works; add/list TODO)
+│  └─ desktop/                 Tauri 2 app + React dashboard
+│     ├─ src/                  React 19 + Vite + Tailwind sources
+│     └─ src-tauri/            Rust shell, tauri.conf.json, capabilities
+├─ extensions/browser/         planned WXT extension (empty)
+├─ docs/                       architecture, protocol, ADRs, roadmap, assets
+└─ .github/workflows/ci.yml    3-OS Rust gates + frontend gates
+```
+
+Key files:
+
+| Concern | File |
+|---|---|
+| Protocol DTOs | `crates/downpour-types/src/lib.rs` |
+| SQLite schema | `crates/downpour-store/src/migrations.rs` |
+| Segment math | `crates/downpour-core/src/planner.rs` |
+| Filename safety | `crates/downpour-core/src/filename.rs` |
+| IPC framing | `crates/downpour-ipc/src/protocol.rs` |
+| Test HTTP server | `crates/downpour-testkit/src/lib.rs` |
+| Native host framing | `crates/downpour-nm-host/src/main.rs` |
+| Tauri command | `apps/desktop/src-tauri/src/lib.rs` |
+| Dashboard entry | `apps/desktop/src/App.tsx` |
+| Design tokens | `apps/desktop/src/styles.css` |
+
+## 5. Commands
+
+```bash
+# Rust — run from repo root
+cargo test --workspace
+cargo test -p downpour-core planner          # one module
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all
+cargo fmt --all --check
+
+# Frontend — run from repo root
+pnpm install                                 # pnpm 10; lockfile committed
+pnpm --dir apps/desktop dev                  # browser preview, mock data
+pnpm --dir apps/desktop typecheck
+pnpm --dir apps/desktop build
+pnpm tauri dev                               # real Tauri window (needs DISPLAY)
+
+# Useful
+cargo check -p downpour-desktop              # Tauri shell only
+cargo run -p downpour-cli -- info            # CLI version/protocol
+sqlite3 <db> .schema                         # inspect schema once engine lands
+```
+
+**Expected local timings:** first `cargo check -p downpour-desktop` ~1–2 min;
+first `pnpm tauri dev` ~4–6 min because the binary is linked with debuginfo;
+subsequent runs are seconds. Do not interpret the first build as a hang.
+
+## 6. Architecture in one screen
+
+```
+Browser extension (MV3) ──native messaging──► downpour-nm-host
+                                                   │ JSON-line IPC
+                                                   ▼
+Tauri app (React dashboard) ◄──commands/events── downpour-core engine
+                                                   │
+                                        rusqlite (WAL) + .downpour-part files
+```
+
+Pipeline: **probe → plan → transfer → checkpoint → finalize**.
+
+- Probe: `GET Range: bytes=0-0`, `Accept-Encoding: identity`, manual redirects
+  (max 10), capture strong ETag / Last-Modified, final URL, filename.
+- Plan: connections `clamp(1,32)`; one stream for no-range/unknown/<2 MiB.
+- Transfer: one network task per segment → bounded channel → single writer
+  thread → positional writes.
+- Checkpoint: fsync file, then DB transaction; reconcile on startup with
+  `If-Range`.
+- Finalize: verify length, optional SHA-256, atomic rename, fsync parent dir.
+
+Progress events are coalesced at 4–10 Hz. Never emit one event per chunk.
+
+## 7. Data model (initial migration)
+
+`downloads`, `segments`, `queues`, `schedules`, `settings`, `history`,
+`media_jobs`, `grabber_jobs`, `grabber_frontier`.
+
+- Statuses: `queued`, `probing`, `downloading`, `paused`, `finalizing`,
+  `completed`, `failed`, `canceled`.
+- Segment states: `pending`, `active`, `done`, `failed`.
+- Timestamps are milliseconds UTC (`INTEGER`).
+- IDs are UUIDv7 text.
+- Tables are `STRICT`; status columns have `CHECK` constraints.
+- `headers_enc` is for keyring-encrypted sensitive headers only.
+
+## 8. Version pins and why
+
+| Pin | Reason |
+|---|---|
+| Rust edition 2024, MSRV 1.85 | Workspace policy; local toolchain is newer |
+| `rusqlite` **0.40** | `rusqlite_migration` 2.6 depends on 0.40; 0.41 conflicts on `libsqlite3-sys` links |
+| `rusqlite_migration` 2.6 | Latest; pairs with rusqlite 0.40 |
+| `reqwest` 0.13 | Features are `rustls`, `rustls-native-certs` — there is **no** `rustls-tls` feature in 0.13 |
+| `axum` 0.8 | Route params use `{size}`, **not** `:size` |
+| Tauri 2.x (`tauri` 2.11, CLI 2.12) | Stable line; Tauri 3 is alpha and unsupported here |
+| React 19 / Vite 8 / Tailwind 4 / TS 7 | Current frontend stack; Tailwind is CSS-first (`@theme`) |
+| pnpm 10 | `packageManager` field and lockfile |
+
+Adding or changing a pin? Update this table in the same commit.
+
+## 9. Coding standards
+
+### Rust
+
+- Edition 2024, `rustfmt` default, clippy `-D warnings`.
+- `thiserror` for public errors; no `unwrap`/`expect` on fallible paths in
+  library code (tests may unwrap).
+- `#[must_use]` on pure constructors/queries.
+- Public items get doc comments. Module-level docs explain the invariant, not
+  the syntax.
+- Prefer plain functions over traits until a second implementation exists.
+- Log with `tracing`; never log secrets. Use structured fields.
+- Avoid `std::process::Command` without absolute paths, argument arrays (no
+  shell), and process-tree cleanup.
+
+### TypeScript / React
+
+- `strict`, `noUnusedLocals`, `noUnusedParameters`; no `any`.
+- Named exports; components under `src/components`, pure helpers under `src/lib`.
+- Tailwind semantic tokens (`bg-surface`, `text-muted`, `border-line`,
+  `text-accent`). Raw hex only inside SVG assets.
+- Every interactive control needs an accessible name; dialogs need
+  `role="dialog"`, `aria-modal`, and Escape handling.
+- Do not encode status by color alone; pair icon/text.
+- Mock data is clearly labelled `Preview data`. Never present it as live.
+
+### Copy
+
+Sentence case, no exclamation marks, no marketing adjectives in UI. Error
+messages say what happened and what the user can do.
+
+## 10. Testing and quality gates
+
+**Definition of gate-clean:**
+
+```bash
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+pnpm --dir apps/desktop typecheck
+pnpm --dir apps/desktop build
+```
+
+- Engine correctness is defined by `downpour-testkit`, not live internet tests:
+  `/ok/{size}`, `/no-range/{size}` today; add `/drop`, `/etag-change`, `/429`,
+  `/redirect`, `/truncated`, `/gzip-range`, `/disposition` as M1 proceeds.
+- Use `proptest` for planner tiling invariants.
+- Crash tests use a spawned CLI process + SIGKILL (`taskkill /F` on Windows)
+  and compare SHA-256 against the source.
+- UI tests currently stop at typecheck/build; Vitest + Playwright land with M3.
+- Never add a test that downloads from the public internet.
+
+## 11. Milestones
+
+Full detail in `docs/roadmap.md`.
+
+| # | Scope | State |
+|---|---|---|
+| M0 | Workspace, schema, planner, filename, IPC types, testkit, dashboard, CI, docs | ✅ |
+| M1 | Probe, single-stream transfer, SQLite journal/resume, pause, CLI | next |
+| M2 | Multi-connection, work-stealing, throttle, retries, kill-9 tests | |
+| M3 | Full UI wired to engine, tray, notifications, settings | |
+| M4 | Queue, scheduler, categories, autostart, single-instance, updater | |
+| M5 | IPC server/client, native host, Chromium/Edge extension | |
+| M6 | yt-dlp, media sniffing, HLS fallback | |
+| M7 | Site grabber, batch import | |
+| M8 | Packaging, signing, notarization, release CI | |
+| M9 | Accessibility, i18n, diagnostics, docs | |
+
+**M1 exit criteria:** a real file downloads over one stream; state persists;
+kill the process and resume without re-downloading committed bytes; CLI
+pause/resume; fault tests pass; output SHA-256 matches.
+
+## 12. Branching and releases
+
+- **`dev` is the default branch.** All feature work branches from `dev` and
+  merges back via PR.
+- **`main` is release-only and pulls from `dev`.** Local `main` is configured to
+  track `origin/dev`, so `git pull` on `main` brings dev's changes. Do not
+  develop on `main`; do not force-push either branch.
+- Branch names: `feat/<slug>`, `fix/<slug>`, `docs/<slug>`, `chore/<slug>`.
+- Commits: imperative subject, ≤72 chars, body explains why. Include the
+  attribution line required by the session.
+- Version bumps happen only on release merges into `main`.
+
+## 13. Security and legal checklist
+
+Before committing anything that touches downloads, browser handoff, media, or
+the grabber:
+
+- [ ] URL schemes restricted to `http`/`https`.
+- [ ] Private/link-local targets require explicit user confirmation.
+- [ ] Destination path canonicalized; traversal and symlink TOCTOU considered.
+- [ ] No secrets in logs, errors, fixtures, or screenshots.
+- [ ] Spawned tools use absolute paths, no shell, and process-tree kill.
+- [ ] `yt-dlp` downloads verify a pinned SHA-256.
+- [ ] No DRM bypass; refuse SAMPLE-AES/Widevine/PlayReady.
+- [ ] Site grabber defaults: robots.txt obeyed, per-host delay, page/byte caps.
+- [ ] `cargo deny`/`cargo audit` clean once those configs land (M9).
+
+## 14. Known traps
+
+- `pnpm-workspace.yaml` already lists `extensions/browser`, which has no
+  `package.json` yet. Add one when M5 starts; pnpm tolerates the missing project.
+- Tauri capability schema (`apps/desktop/src-tauri/gen/schemas/...`) is generated
+  at build time and gitignored; editors may show it as missing until first build.
+- `pnpm tauri dev` requires a display; CI runs `cargo check/test` only.
+- Linux WebKitGTK rendering glitches: try
+  `WEBKIT_DISABLE_DMABUF_RENDERER=1` or `WEBKIT_DISABLE_COMPOSITING_MODE=1`.
+- Changing `tauri.conf.json` or capabilities triggers a Rust rebuild.
+- The CLI binary is named `downpour`; the crate is `downpour-cli` (package) and
+  the desktop crate is `downpour-desktop`.
+- `Cargo.lock` is committed deliberately (application, not library).
+- Do not commit `target/`, `node_modules/`, `dist/`, or generated Tauri schemas.
+- Screenshots belong in `docs/assets/` and should stay under ~500 KB.
+
+## 15. When in doubt
+
+- Prefer the existing pattern in the same crate over a new abstraction.
+- Update the relevant doc/ADR when a decision changes; do not leave stale docs.
+- If a task requires credentials, code signing, destructive filesystem work, or
+  a scope decision (drop Firefox, change licensing), stop and ask in chat — do
+  not guess.

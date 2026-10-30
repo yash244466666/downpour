@@ -1,0 +1,15 @@
+[package]
+name = "downpour-store"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "SQLite persistence, schema, and migrations for Downpour"
+
+[dependencies]
+downpour-types = { path = "../downpour-types" }
+rusqlite.workspace = true
+rusqlite_migration.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+uuid.workspace = true

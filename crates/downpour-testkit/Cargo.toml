@@ -1,0 +1,21 @@
+[package]
+name = "downpour-testkit"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Fault-injecting HTTP test server for Downpour"
+
+[dependencies]
+axum.workspace = true
+bytes.workspace = true
+downpour-types = { path = "../downpour-types" }
+http-body-util.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tower-http.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+reqwest.workspace = true

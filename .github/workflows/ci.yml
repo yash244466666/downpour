@@ -20,7 +20,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, windows-latest, macos-14]
+        # macOS 14 images are retired on 2026-11-02 and fail during brownouts.
+        os: [ubuntu-22.04, windows-latest, macos-15]
     steps:
       - uses: actions/checkout@v4
 

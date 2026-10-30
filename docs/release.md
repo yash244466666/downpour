@@ -69,7 +69,10 @@ The updater plugin is compiled in and the Settings dialog can call
 
 4. Publish `latest.json` and the signed bundles from the draft release.
 
-Until then the check returns "Updates are not configured in this build".
+The updater plugin is registered only when `plugins.updater` exists; without
+it, startup is unaffected and `check_for_updates` returns "Updates are not
+configured in this build". Do not add `plugins.updater` without a valid
+`pubkey`, or plugin initialization will fail at startup.
 
 ## Browser native host
 

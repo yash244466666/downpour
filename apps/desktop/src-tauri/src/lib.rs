@@ -1019,7 +1019,13 @@ fn show_window(app: &AppHandle) {
 }
 
 pub fn run() {
-    tauri::Builder::default()
+    let context = tauri::generate_context!();
+    // The updater plugin refuses to initialize without a `plugins.updater`
+    // config. Register it only when a release build provides one; otherwise
+    // `check_for_updates` reports that updates are not configured.
+    let updater_configured = context.config().plugins.0.contains_key("updater");
+
+    let mut builder = tauri::Builder::default()
         // Must be the first plugin: a second launch focuses the running app.
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             show_window(app);
@@ -1029,8 +1035,13 @@ pub fn run() {
             None,
         ))
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_notification::init());
+
+    if updater_configured {
+        builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    }
+
+    builder
         .setup(|app| {
             app.manage(load_state());
             build_tray(app)?;
@@ -1079,6 +1090,6 @@ pub fn run() {
             start_all,
             reveal_path
         ])
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("error while running Downpour");
 }

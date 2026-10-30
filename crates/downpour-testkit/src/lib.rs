@@ -16,6 +16,7 @@
 //! | `/always-truncated/{size}` | declares `Content-Length: size` but always sends half |
 //! | `/retry-429/{size}/{fails}` | first request succeeds; next `fails` requests return `429` |
 //! | `/disposition/{size}?name=...` | serves a file with that `Content-Disposition` name |
+//! | `/slow/{size}/{chunk_kb}/{delay_ms}` | range-aware stream with a delay per chunk (records `Range` headers) |
 //! | `/redirect/{hops}/{size}` | `hops` redirects, then `/ok/{size}` |
 //! | `/auth/{size}` | always `401` |
 //!
@@ -26,6 +27,7 @@ use std::io;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
+use std::time::Duration;
 
 use axum::{
     Router,
@@ -47,6 +49,7 @@ pub struct TestState {
     seed: AtomicU64,
     dropped: AtomicBool,
     retry_requests: AtomicUsize,
+    ranges: RwLock<Vec<String>>,
 }
 
 impl TestState {
@@ -56,6 +59,7 @@ impl TestState {
             seed: AtomicU64::new(0),
             dropped: AtomicBool::new(false),
             retry_requests: AtomicUsize::new(0),
+            ranges: RwLock::new(Vec::new()),
         }
     }
 
@@ -75,6 +79,20 @@ impl TestState {
 
     fn seed(&self) -> u8 {
         self.seed.load(Ordering::SeqCst) as u8
+    }
+
+    fn record_range(&self, value: &str) {
+        match self.ranges.write() {
+            Ok(mut ranges) => ranges.push(value.to_owned()),
+            Err(poisoned) => poisoned.into_inner().push(value.to_owned()),
+        }
+    }
+
+    fn ranges(&self) -> Vec<String> {
+        match self.ranges.read() {
+            Ok(ranges) => ranges.clone(),
+            Err(poisoned) => poisoned.into_inner().clone(),
+        }
     }
 }
 
@@ -103,6 +121,7 @@ impl TestServer {
             .route("/always-truncated/{size}", get(always_truncated))
             .route("/retry-429/{size}/{fails}", get(retry_429))
             .route("/disposition/{size}", get(disposition))
+            .route("/slow/{size}/{chunk_kb}/{delay_ms}", get(slow))
             .route("/redirect/{hops}/{size}", get(redirect))
             .route("/auth/{size}", get(auth))
             .with_state(state.clone());
@@ -136,6 +155,12 @@ impl TestServer {
     /// Change the byte-pattern seed used by `/versioned`.
     pub fn set_seed(&self, seed: u64) {
         self.state.seed.store(seed, Ordering::SeqCst);
+    }
+
+    /// `Range` headers seen by the `/slow` route, in arrival order.
+    #[must_use]
+    pub fn ranges_seen(&self) -> Vec<String> {
+        self.state.ranges()
     }
 
     pub async fn stop(mut self) {
@@ -259,6 +284,95 @@ async fn retry_429(
         return response;
     }
     serve_range(size, &headers, &state, state.seed(), None)
+}
+
+/// Range-aware but deliberately slow: each chunk is delayed, so concurrent
+/// range requests overlap and tests can observe segmented behaviour.
+async fn slow(
+    Path((size, chunk_kb, delay_ms)): Path<(u64, u64, u64)>,
+    State(state): State<Arc<TestState>>,
+    headers: HeaderMap,
+) -> Response {
+    let etag = state.etag();
+    if let Some(value) = headers
+        .get(header::RANGE)
+        .and_then(|value| value.to_str().ok())
+    {
+        state.record_range(value);
+    }
+
+    let if_range_present = headers.contains_key(header::IF_RANGE);
+    let if_range_matches = headers
+        .get(header::IF_RANGE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value == etag);
+    let ignore_range = if_range_present && !if_range_matches;
+
+    if size == 0 {
+        return with_headers(StatusCode::OK, Vec::new(), None, true, &etag, None);
+    }
+
+    let requested = if ignore_range {
+        None
+    } else {
+        headers
+            .get(header::RANGE)
+            .and_then(|value| value.to_str().ok())
+            .and_then(parse_range)
+    };
+
+    let (status, start, end) = match requested {
+        Some((start, requested_end)) if start < size => (
+            StatusCode::PARTIAL_CONTENT,
+            start,
+            requested_end.min(size - 1),
+        ),
+        Some(_) if !ignore_range => {
+            let mut response = StatusCode::RANGE_NOT_SATISFIABLE.into_response();
+            if let Ok(value) = HeaderValue::from_str(&format!("bytes */{size}")) {
+                response.headers_mut().insert(header::CONTENT_RANGE, value);
+            }
+            return response;
+        }
+        _ => (StatusCode::OK, 0, size - 1),
+    };
+
+    let seed = state.seed();
+    let chunk_bytes = chunk_kb.saturating_mul(1024).max(1);
+    let length = end - start + 1;
+    let body_stream = stream::unfold((start, end, 0_u64), move |(start, end, sent)| async move {
+        let next_start = start.saturating_add(sent);
+        if next_start > end {
+            return None;
+        }
+        let next_end = next_start.saturating_add(chunk_bytes - 1).min(end);
+        let bytes = pattern_body(next_start, next_end, seed);
+        if delay_ms > 0 {
+            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+        }
+        let next_sent = next_end - start + 1;
+        Some((
+            Ok::<_, io::Error>(Bytes::from(bytes)),
+            (start, end, next_sent),
+        ))
+    });
+
+    let mut response = Response::new(Body::from_stream(body_stream));
+    *response.status_mut() = status;
+    let headers_mut = response.headers_mut();
+    if let Ok(value) = HeaderValue::from_str(&length.to_string()) {
+        headers_mut.insert(header::CONTENT_LENGTH, value);
+    }
+    if let Ok(value) = HeaderValue::from_str(&etag) {
+        headers_mut.insert(header::ETAG, value);
+    }
+    headers_mut.insert(header::ACCEPT_RANGES, HeaderValue::from_static("bytes"));
+    if status == StatusCode::PARTIAL_CONTENT {
+        if let Ok(value) = HeaderValue::from_str(&format!("bytes {start}-{end}/{size}")) {
+            headers_mut.insert(header::CONTENT_RANGE, value);
+        }
+    }
+    response
 }
 
 async fn disposition(

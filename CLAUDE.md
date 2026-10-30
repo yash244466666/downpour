@@ -1,7 +1,7 @@
 # CLAUDE.md — Downpour
 
 > Project context for Claude Code. Read this before changing anything.
-> Last updated: 2026-10-30 (M1 complete).
+> Last updated: 2026-10-31 (M2 complete).
 
 ## 1. What this is
 
@@ -10,17 +10,20 @@ manager in the IDM class: 1–32 parallel connections per file, crash-safe resum
 queues, scheduler, bandwidth throttling, browser download take-over, media
 grabbing (HLS/DASH/yt-dlp), and a site grabber — wrapped in a modern dashboard.
 
-**Current status: M1 complete.** Single-stream downloads work end to end; the
-dashboard still shows mock data. Do not describe unfinished features as working.
+**Current status: M2 complete.** Single-stream and multi-connection downloads
+work end to end; the dashboard still shows mock data. Do not describe
+unfinished features as working.
 
 | Area | State |
 |---|---|
-| Rust workspace | Compiles; 78 tests pass; clippy `-D warnings` clean |
+| Rust workspace | Compiles; 91 tests pass; clippy `-D warnings` clean |
 | Shared types / IPC contract | DTOs, error codes, framing, handshake types |
 | SQLite schema + migrations | Initial schema, WAL, STRICT tables, download queries |
 | Segment planner / filename safety | Planner exists but drives M2; filename hardening live |
-| Transfer engine | **Single-stream** probe/transfer/resume/pause/finalize implemented |
-| Multi-connection transfer | **Not implemented** — M2 (planner not wired) |
+| Transfer engine | Probe/transfer/resume/pause/finalize, single-stream and segmented |
+| Multi-connection transfer | 1–32 workers over a dynamic segment queue (M2) |
+| Throttling | Per-download and global byte-rate token bucket |
+| Crash testing | Engine restart tests + a real SIGKILL CLI test (Unix) |
 | IPC server/client | **Not implemented** — protocol types only (M5) |
 | CLI | `add`, `get`, `run`, `list`, `info`, `pause`, `cancel`, `version` work |
 | Desktop UI | Dashboard with **mock data**; `engine_info` Tauri command works |
@@ -254,8 +257,8 @@ pnpm --dir apps/desktop build
 - Crash tests use a spawned CLI process + SIGKILL (`taskkill /F` on Windows)
   and compare SHA-256 against the source.
 - UI tests currently stop at typecheck/build; Vitest + Playwright land with M3.
-- Current total: **78 tests** (28 core, 18 engine integration, 6 store, 6 testkit,
-  4 types, plus IPC/media/grabber/nm-host units).
+- Current total: **91 tests** (37 core, 21 engine integration, 1 CLI crash,
+  6 store, 6 testkit, 4 types, plus IPC/media/grabber/nm-host units).
 - Never add a test that downloads from the public internet.
 
 ## 11. Milestones
@@ -266,7 +269,8 @@ Full detail in `docs/roadmap.md`.
 |---|---|---|
 | M0 | Workspace, schema, planner, filename, IPC types, testkit, dashboard, CI, docs | ✅ |
 | M1 | Probe, single-stream transfer, SQLite journal/resume, pause, CLI | ✅ |
-| M2 | Multi-connection, work-stealing, throttle, retries, kill-9 tests | next |
+| M2 | Multi-connection, dynamic segmentation, throttle, retries, kill-9 tests | ✅ |
+| M3 | Full UI wired to engine, tray, notifications, settings | next |
 | M3 | Full UI wired to engine, tray, notifications, settings | |
 | M4 | Queue, scheduler, categories, autostart, single-instance, updater | |
 | M5 | IPC server/client, native host, Chromium/Edge extension | |
@@ -279,9 +283,13 @@ Full detail in `docs/roadmap.md`.
 persists; kill the process and resume without re-downloading committed bytes;
 CLI pause/resume; fault tests pass; output SHA-256 matches.
 
-**M2 exit criteria:** range-capable files split across up to 32 connections;
-work-stealing; byte-rate throttling; per-segment retries; `kill -9` at random
-offsets leaves no corruption after resume.
+**M2 exit criteria (met):** range-capable files split across up to 32 workers
+pulling from a dynamic segment queue; byte-rate throttling; per-segment
+retries; a real SIGKILL mid-transfer resumes to a byte-exact file.
+
+**M3 exit criteria:** the dashboard shows live downloads from the engine,
+add/pause/resume/cancel work from the UI, settings persist, and the tray and
+notifications are wired.
 
 ## 12. Branching and releases
 
@@ -317,8 +325,10 @@ the grabber:
 - Tauri capability schema (`apps/desktop/src-tauri/gen/schemas/...`) is generated
   at build time and gitignored; editors may show it as missing until first build.
 - `pnpm tauri dev` requires a display; CI runs `cargo check/test` only.
-- M1 runs **one download at a time per `Engine`**. Do not add ad-hoc concurrency
-  in the CLI; that is the queue's job (M4).
+- One `Engine` runs **one download at a time** (many connections per download).
+  Do not add ad-hoc concurrency in the CLI; queue-level concurrency is M4.
+- Segments are finer-grained than workers (about 3×), and workers pull from a
+  shared queue; do not reintroduce per-worker fixed segments.
 - Ctrl-C in the CLI pauses (commits progress, keeps the `.downpour-part`).
   `downpour pause <id>` only works on a download no live process owns; the
   shared daemon arrives with IPC in M5.

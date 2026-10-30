@@ -46,9 +46,9 @@ version can move it into a daemon without rewriting the transfer code.
    Trust a real `206` + `Content-Range`, never `Accept-Ranges`. A `200` means
    single stream. Capture strong ETag / Last-Modified and the post-redirect URL.
 2. **Plan** — clamp connections to 1–32; one segment for no-range, unknown-size,
-   or sub-2 MiB files; otherwise split into at most `connections` segments that
-   exactly tile the file. *Implemented as single-stream in M1; the segmented
-   planner ships in M2.*
+   or sub-2 MiB files; otherwise split into ~3× `connections` segments (1 MiB
+   minimum, 128 maximum) that exactly tile the file. Finer segments let workers
+   pull new ranges instead of idling.
 3. **Transfer** — one network task per segment; a bounded channel feeds a single
    writer thread that owns the only file handle and performs positional writes
    (`write_all_at` / `seek_write`). Do not clone handles: duplicated handles
@@ -58,13 +58,27 @@ version can move it into a daemon without rewriting the transfer code.
 5. **Finalize** — fsync, length check, optional SHA-256, atomic rename, fsync
    the parent directory on Unix, then mark complete.
 
-### Implemented in M1
+### Implemented in M1–M2
 
-`probe`, the single writer thread, checkpointing, resume, pause, finalize, and
-the CLI are live in `downpour-core` / `apps/cli`. One `Engine` drives one
-download at a time; concurrency across downloads arrives with the queue (M4).
-Every run re-probes, so a short-lived signed URL is refreshed before each
-resume.
+`probe`, the single writer thread, checkpointing, resume, pause, finalize, the
+CLI, segmented transfer, and throttling are live in `downpour-core` /
+`apps/cli`.
+
+- Segmented transfers spawn `min(connections, segments)` workers that pull
+  segment indices from a shared queue. Each worker streams one `Range` request
+  at a time; early finishers take the next range.
+- The writer tracks a durable end offset per segment. A checkpoint syncs once
+  and commits every segment in one transaction, so per-segment resume never
+  trusts bytes past the last sync.
+- A single-segment resume that receives `200` (content changed) truncates and
+  restarts once the probe confirms; a multi-segment transfer treats a
+  mid-flight `200` as a content change for the next run.
+- Throttling is a token bucket shared by the transfer's workers, applied to
+  both the segmented and single-stream paths.
+
+One `Engine` drives one download at a time; concurrency across downloads
+arrives with the queue (M4). Every run re-probes, so a short-lived signed URL
+is refreshed before each resume.
 
 ### Crash safety
 

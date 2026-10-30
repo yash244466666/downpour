@@ -1066,8 +1066,10 @@ dependencies = [
  "clap",
  "downpour-core",
  "downpour-store",
+ "downpour-testkit",
  "downpour-types",
  "serde_json",
+ "tempfile",
  "tokio",
 ]
 

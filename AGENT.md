@@ -9,14 +9,12 @@
 Ship Downpour milestone by milestone. Each milestone must leave the repository
 gate-clean and honest about what works.
 
-- **Current:** M1 complete (2026-10-30). Probe, single-stream transfer, SQLite
-  journal/resume, pause, finalize, CLI, and the extended fault-injection server.
-- **Next:** M2 — multi-connection transfers, work-stealing, throttling,
-  per-segment retries, `kill -9` crash tests. Acceptance criteria are in
-  `docs/roadmap.md`.
-- **Not implemented:** multi-connection transfer, IPC server, browser extension,
-  media pipeline, crawler, packaging. Do not claim otherwise in code, docs,
-  commits, or chat.
+- **Current:** M2 complete (2026-10-31). Multi-connection transfers over a
+  dynamic segment queue, throttling, per-segment retries, and SIGKILL resume.
+- **Next:** M3 — wire the dashboard to the engine, tray, notifications,
+  settings. Acceptance criteria are in `docs/roadmap.md`.
+- **Not implemented:** IPC server, browser extension, media pipeline, crawler,
+  packaging. Do not claim otherwise in code, docs, commits, or chat.
 
 ## 1. Bootstrap (every session)
 

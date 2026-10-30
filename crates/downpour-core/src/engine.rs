@@ -9,6 +9,7 @@
 //! drives one download at a time.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use downpour_store::Store;
@@ -26,9 +27,12 @@ use reqwest::{Client, StatusCode, Url};
 use crate::cancel::CancelToken;
 use crate::error::{EngineError, EngineResult};
 use crate::filename::{sanitize_file_name, unique_file_name};
+use crate::planner::{MIN_MULTI_CONNECTION_BYTES, plan_segments};
 use crate::probe::{
     ProbeResult, filename_from_content_disposition, filename_from_url, parse_content_range, probe,
 };
+use crate::ratelimit::RateLimiter;
+use crate::segmented;
 use crate::writer::ChunkWriter;
 
 /// Backoff policy for transient network failures.
@@ -59,6 +63,8 @@ pub struct EngineConfig {
     pub checkpoint_interval: Duration,
     pub checkpoint_bytes: u64,
     pub connect_timeout: Duration,
+    /// Global byte-rate cap; 0 means unlimited. Per-download limits tighten it.
+    pub global_speed_limit: u64,
 }
 
 impl Default for EngineConfig {
@@ -70,6 +76,7 @@ impl Default for EngineConfig {
             checkpoint_interval: Duration::from_secs(1),
             checkpoint_bytes: 8 * 1024 * 1024,
             connect_timeout: Duration::from_secs(30),
+            global_speed_limit: 0,
         }
     }
 }
@@ -368,6 +375,85 @@ impl Engine {
                 .await;
         }
 
+        let started = Instant::now();
+        let connections = record.connections.clamp(1, 32);
+        let use_segmented = ranges
+            && total.is_some_and(|value| value >= MIN_MULTI_CONNECTION_BYTES)
+            && connections > 1;
+
+        if use_segmented {
+            let total_bytes = total.unwrap_or(0);
+            let segments =
+                self.prepare_segments(id, total_bytes, connections, content_changed, &temp_path)?;
+            let initial_ends: Vec<(u32, u64)> = segments
+                .iter()
+                .map(|segment| (segment.index, segment.start + segment.downloaded))
+                .collect();
+            let max_end = initial_ends.iter().map(|(_, end)| *end).max().unwrap_or(0);
+
+            if let Some(parent) = final_path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            let file = std::fs::OpenOptions::new()
+                .create(true)
+                .truncate(false)
+                .read(true)
+                .write(true)
+                .open(&temp_path)?;
+            if file.metadata()?.len() != max_end {
+                file.set_len(max_end)?;
+            }
+
+            downloads::mark_started(self.store.connection(), id)?;
+            let client = self.client.clone();
+            let writer = Arc::new(ChunkWriter::spawn(file, initial_ends)?);
+            let request = segmented::SegmentedRequest {
+                client: &client,
+                url: &transfer_url,
+                headers: &headers,
+                connections,
+                total: total_bytes,
+                segments: &segments,
+                validator: probe.validator(),
+                speed_limit: effective_speed_limit(&record, &self.config),
+                checkpoint_interval: self.config.checkpoint_interval,
+                retry: self.config.retry,
+            };
+
+            let outcome = segmented::run(
+                &mut self.store,
+                writer.clone(),
+                request,
+                id,
+                cancel,
+                progress,
+            )
+            .await;
+
+            match outcome {
+                Ok(segmented::TransferOutcome::Paused) => {
+                    drop(writer);
+                    return Ok(RunOutcome::Paused);
+                }
+                Ok(segmented::TransferOutcome::Completed) => {}
+                Err(error) => {
+                    drop(writer);
+                    return Err(error);
+                }
+            }
+
+            let writer = Arc::try_unwrap(writer).map_err(|_| {
+                EngineError::Internal("writer handle still shared after transfer".to_owned())
+            })?;
+            writer.finish().await.map_err(EngineError::Io)?;
+
+            return self
+                .finalize_download(
+                    id, &record, &file_name, &temp_path, total, started, progress,
+                )
+                .await;
+        }
+
         let mut resume = 0_u64;
         let segment_end = total.map(|value| value - 1);
         if ranges {
@@ -452,8 +538,8 @@ impl Engine {
         }
 
         downloads::mark_started(self.store.connection(), id)?;
-        let writer = ChunkWriter::spawn(file, resume)?;
-        let started = Instant::now();
+        let writer = ChunkWriter::spawn(file, vec![(0, resume)])?;
+        let limiter = RateLimiter::new(effective_speed_limit(&record, &self.config));
 
         let transfer = transfer(
             &self.client,
@@ -469,6 +555,7 @@ impl Engine {
             progress,
             resume,
             probe.validator(),
+            limiter.as_ref(),
         )
         .await;
 
@@ -487,7 +574,26 @@ impl Engine {
 
         writer.finish().await.map_err(EngineError::Io)?;
 
-        let length = tokio::fs::metadata(&temp_path).await?.len();
+        self.finalize_download(
+            id, &record, &file_name, &temp_path, total, started, progress,
+        )
+        .await
+    }
+
+    // Finalization needs the resolved paths and timing context; grouping them
+    // into a struct would add noise without making the call site clearer.
+    #[allow(clippy::too_many_arguments)]
+    async fn finalize_download(
+        &mut self,
+        id: DownloadId,
+        record: &DownloadRecord,
+        file_name: &str,
+        temp_path: &Path,
+        total: Option<u64>,
+        started: Instant,
+        progress: Option<ProgressSink<'_>>,
+    ) -> EngineResult<RunOutcome> {
+        let length = tokio::fs::metadata(temp_path).await?.len();
         if let Some(expected) = total {
             if length != expected {
                 return Err(EngineError::Truncated {
@@ -497,7 +603,7 @@ impl Engine {
             }
         }
 
-        let checksum = sha256_file(&temp_path).await?;
+        let checksum = sha256_file(temp_path).await?;
         if let Some(expected) = record.checksum_sha256.as_deref() {
             if !expected.eq_ignore_ascii_case(&checksum) {
                 return Err(EngineError::ChecksumMismatch {
@@ -510,8 +616,8 @@ impl Engine {
         downloads::set_state(self.store.connection(), id, DownloadState::Finalizing)?;
 
         // A different file may have claimed the name while we were downloading.
-        let final_path = unique_file_name(Path::new(&record.dest_dir), &file_name);
-        tokio::fs::rename(&temp_path, &final_path).await?;
+        let final_path = unique_file_name(Path::new(&record.dest_dir), file_name);
+        tokio::fs::rename(temp_path, &final_path).await?;
         fsync_parent(&final_path).await?;
 
         let elapsed = started.elapsed().as_secs_f64().max(0.001);
@@ -534,6 +640,39 @@ impl Engine {
         }
 
         Ok(RunOutcome::Completed)
+    }
+
+    fn prepare_segments(
+        &mut self,
+        id: DownloadId,
+        total: u64,
+        connections: u16,
+        content_changed: bool,
+        temp_path: &Path,
+    ) -> EngineResult<Vec<SegmentRecord>> {
+        let mut segments = downloads::load_segments(self.store.connection(), id)?;
+        if content_changed || !segments_tile(&segments, total) {
+            downloads::replace_segments(
+                self.store.connection_mut(),
+                id,
+                &plan_segments(total, connections),
+            )?;
+            segments = downloads::load_segments(self.store.connection(), id)?;
+        }
+
+        let file_len = std::fs::metadata(temp_path)
+            .map(|meta| meta.len())
+            .unwrap_or(0);
+        let mut downloaded_total = 0_u64;
+        for segment in &mut segments {
+            segment.downloaded = segment
+                .downloaded
+                .min(segment.len())
+                .min(file_len.saturating_sub(segment.start));
+            downloaded_total = downloaded_total.saturating_add(segment.downloaded);
+        }
+        downloads::commit_segments(self.store.connection_mut(), id, downloaded_total, &segments)?;
+        Ok(segments)
     }
 
     async fn finish_empty(
@@ -617,6 +756,7 @@ async fn transfer(
     progress: Option<ProgressSink<'_>>,
     resume: u64,
     validator: Option<String>,
+    limiter: Option<&RateLimiter>,
 ) -> EngineResult<TransferOutcome> {
     const MAX_RESTARTS: u32 = 2;
     const MAX_TOTAL_ATTEMPTS: u32 = 500;
@@ -640,7 +780,10 @@ async fn transfer(
         // the offset at the truncation point would write the new body in the
         // wrong place.
         if !ranges && offset > 0 {
-            writer.truncate(0).await.map_err(EngineError::Io)?;
+            writer
+                .reset(0, vec![(0, 0)])
+                .await
+                .map_err(EngineError::Io)?;
             downloads::reset_progress(store.connection_mut(), id)?;
             offset = 0;
             last_checkpoint_bytes = 0;
@@ -709,7 +852,10 @@ async fn transfer(
             if restarts > MAX_RESTARTS {
                 return Err(EngineError::ContentChanged);
             }
-            writer.truncate(0).await.map_err(EngineError::Io)?;
+            writer
+                .reset(0, vec![(0, 0)])
+                .await
+                .map_err(EngineError::Io)?;
             offset = 0;
             last_checkpoint_bytes = 0;
             last_sample_bytes = 0;
@@ -794,13 +940,25 @@ async fn transfer(
                             return Err(EngineError::ContentChanged);
                         }
                     }
-                    writer.write(offset, chunk).await.map_err(EngineError::Io)?;
+                    if let Some(limiter) = limiter {
+                        tokio::select! {
+                            biased;
+                            () = cancel.cancelled() => {
+                                return pause_transfer(writer, store, id, segment_end).await;
+                            }
+                            () = limiter.acquire(len) => {}
+                        }
+                    }
+                    writer
+                        .write(0, offset, chunk)
+                        .await
+                        .map_err(EngineError::Io)?;
                     offset += len;
 
                     let checkpoint_due = last_checkpoint_at.elapsed() >= config.checkpoint_interval
                         || offset.saturating_sub(last_checkpoint_bytes) >= config.checkpoint_bytes;
                     if checkpoint_due {
-                        let durable = writer.sync().await.map_err(EngineError::Io)?;
+                        let durable = writer.sync_one(0).await.map_err(EngineError::Io)?;
                         commit_durable(store, id, durable, segment_end)?;
                         last_checkpoint_at = Instant::now();
                         last_checkpoint_bytes = offset;
@@ -854,7 +1012,7 @@ async fn transfer(
             if attempts >= config.retry.max_attempts {
                 return Err(error);
             }
-            let durable = writer.sync().await.map_err(EngineError::Io)?;
+            let durable = writer.sync_one(0).await.map_err(EngineError::Io)?;
             commit_durable(store, id, durable, segment_end)?;
             offset = durable;
             last_checkpoint_bytes = durable;
@@ -870,7 +1028,7 @@ async fn transfer(
 
         // The writer may have accepted bytes past the last checkpoint; flush
         // before declaring success so the completed length is durable.
-        let durable = writer.sync().await.map_err(EngineError::Io)?;
+        let durable = writer.sync_one(0).await.map_err(EngineError::Io)?;
         if let Some(expected) = total {
             if durable != expected {
                 return Err(EngineError::Truncated {
@@ -890,7 +1048,7 @@ async fn pause_transfer(
     id: DownloadId,
     segment_end: Option<u64>,
 ) -> EngineResult<TransferOutcome> {
-    let durable = writer.sync().await.map_err(EngineError::Io)?;
+    let durable = writer.sync_one(0).await.map_err(EngineError::Io)?;
     commit_durable(store, id, durable, segment_end)?;
     downloads::set_state(store.connection(), id, DownloadState::Paused)?;
     Ok(TransferOutcome::Paused)
@@ -911,6 +1069,31 @@ fn commit_durable(
     });
     downloads::commit_progress(store.connection_mut(), id, durable, segment.as_ref())?;
     Ok(())
+}
+
+fn segments_tile(segments: &[SegmentRecord], total: u64) -> bool {
+    let Some(first) = segments.first() else {
+        return false;
+    };
+    let Some(last) = segments.last() else {
+        return false;
+    };
+    if first.start != 0 || last.end != total.saturating_sub(1) {
+        return false;
+    }
+    segments.iter().all(|segment| segment.start <= segment.end)
+        && segments
+            .windows(2)
+            .all(|pair| pair[0].end.saturating_add(1) == pair[1].start)
+}
+
+fn effective_speed_limit(record: &DownloadRecord, config: &EngineConfig) -> u64 {
+    match (record.speed_limit.unwrap_or(0), config.global_speed_limit) {
+        (0, 0) => 0,
+        (0, global) => global,
+        (per_download, 0) => per_download,
+        (per_download, global) => per_download.min(global),
+    }
 }
 
 fn strip_sensitive_headers(mut headers: HeaderMap) -> HeaderMap {

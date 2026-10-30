@@ -12,11 +12,11 @@ Downpour brings IDM-class downloading — segmented transfers, crash-safe resume
 queues, browser take-over, and media grabbing — to all three desktop platforms
 with an open-source implementation and a modern interface.
 
-> **Status: M1 (single-stream engine).** Downloads work end to end — probe,
-> segmented-file-safe writer thread, crash-safe SQLite checkpoints, resume,
-> pause, SHA-256 verification — driven by the CLI. The desktop dashboard still
-> shows **mock data**; multi-connection transfers, browser integration, media
-> grabbing, and the site grabber are **not implemented yet**. See the
+> **Status: M2 (multi-connection engine).** Downloads work end to end — probe,
+> 1–32 parallel connections over a dynamic segment queue, crash-safe SQLite
+> checkpoints, resume, pause, throttling, SHA-256 verification — driven by the
+> CLI. The desktop dashboard still shows **mock data**; browser integration,
+> media grabbing, and the site grabber are **not implemented yet**. See the
 > [roadmap](docs/roadmap.md).
 
 ## Why Downpour
@@ -33,10 +33,13 @@ traditionally Windows-only, closed-source, and visually dated. Downpour is:
 
 ## Features
 
-### Working today (M1)
+### Working today (M2)
 
-- **Real downloads over a single stream** with probe-based size/range/ETag
+- **Real downloads over 1–32 connections** with probe-based size/range/ETag
   detection, `.downpour-part` temp files, and atomic rename.
+- **Dynamic segmentation**: segments are finer than workers, so a fast worker
+  pulls the next range instead of idling.
+- **Byte-rate throttling** (global and per-download) with a token bucket.
 - **Crash-safe resume**: durable checkpoints after `fsync`, restart recovery,
   validator comparison, and restart-from-zero when content changed.
 - **Pause/resume/cancel** from the CLI; SIGINT pauses safely.
@@ -50,8 +53,8 @@ traditionally Windows-only, closed-source, and visually dated. Downpour is:
 
 ### Planned for v1
 
-- 1–32 parallel connections per file, dynamic re-segmentation, work-stealing.
-- Queue-level concurrency, bandwidth throttling, and per-segment retries.
+- Queue-level concurrency, scheduler, and categories.
+- Browser take-over, media grabbing, and the site grabber.
 - Queue with global/per-host limits, priorities, categories, scheduler.
 - Global and per-download bandwidth throttling.
 - Chromium + Firefox extension: download take-over, context menu, media
@@ -222,10 +225,11 @@ with deterministic byte patterns — no public-internet tests. Crash tests kill 
 CLI process at random offsets and compare SHA-256 against the source once the
 engine lands.
 
-Current state: **78 Rust tests pass**, clippy is warning-free, and the frontend
-typechecks and builds. Engine tests cover byte-exact transfers, pause/resume,
-engine restarts, ETag/content changes, `429`, dropped connections, permanent
-truncation, redirects, auth failures, and traversal filenames.
+Current state: **91 Rust tests pass**, clippy is warning-free, and the frontend
+typechecks and builds. Engine tests cover byte-exact transfers, segmented
+concurrency, throttling, pause/resume, engine restarts, a real SIGKILL resume,
+ETag/content changes, `429`, dropped connections, permanent truncation,
+redirects, auth failures, and traversal filenames.
 
 ## Branching and releases
 
@@ -243,8 +247,8 @@ truncation, redirects, auth failures, and traversal filenames.
 |---|---|---|
 | M0 | Workspace, schema, planner, filename safety, IPC types, testkit, dashboard, CI, docs | ✅ |
 | M1 | Probe, single-stream transfer, SQLite journal/resume, pause, CLI | ✅ |
-| M2 | Multi-connection, work-stealing, throttling, retries, crash tests | next |
-| M3 | Full UI wired to engine, tray, notifications, settings | |
+| M2 | Multi-connection, dynamic segmentation, throttling, retries, crash tests | ✅ |
+| M3 | Full UI wired to engine, tray, notifications, settings | next |
 | M4 | Queue, scheduler, categories, autostart, single-instance, updater | |
 | M5 | IPC server/client, native host, Chromium/Edge extension | |
 | M6 | yt-dlp, media detection, HLS fallback | |

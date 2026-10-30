@@ -323,7 +323,8 @@ impl Engine {
         }
         let headers = request_headers(&record);
 
-        let probe = self.probe_with_retry(&url, &headers, cancel).await?;
+        let probe =
+            probe_with_retry(&self.client, &self.config.retry, &url, &headers, cancel).await?;
         downloads::record_probe(
             self.store.connection(),
             id,
@@ -560,27 +561,32 @@ impl Engine {
         }
         Ok(RunOutcome::Completed)
     }
+}
 
-    async fn probe_with_retry(
-        &self,
-        url: &Url,
-        headers: &HeaderMap,
-        cancel: &CancelToken,
-    ) -> EngineResult<ProbeResult> {
-        let policy = &self.config.retry;
-        let mut attempts = 0_u32;
+/// Retry the probe on transient failures.
+///
+/// Deliberately a free function: `&Engine` is not `Send` because the SQLite
+/// connection is not `Sync`, so an `async fn(&self)` would make the whole run
+/// future non-spawnable.
+async fn probe_with_retry(
+    client: &Client,
+    policy: &RetryPolicy,
+    url: &Url,
+    headers: &HeaderMap,
+    cancel: &CancelToken,
+) -> EngineResult<ProbeResult> {
+    let mut attempts = 0_u32;
 
-        loop {
-            attempts += 1;
-            match probe(&self.client, url, headers).await {
-                Ok(result) => return Ok(result),
-                Err(error) => {
-                    if !error.is_retryable() || attempts >= policy.max_attempts {
-                        return Err(error);
-                    }
-                    if !sleep_or_cancel(cancel, backoff(policy, attempts)).await {
-                        return Err(EngineError::Canceled);
-                    }
+    loop {
+        attempts += 1;
+        match probe(client, url, headers).await {
+            Ok(result) => return Ok(result),
+            Err(error) => {
+                if !error.is_retryable() || attempts >= policy.max_attempts {
+                    return Err(error);
+                }
+                if !sleep_or_cancel(cancel, backoff(policy, attempts)).await {
+                    return Err(EngineError::Canceled);
                 }
             }
         }

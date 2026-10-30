@@ -222,7 +222,7 @@ with deterministic byte patterns — no public-internet tests. Crash tests kill 
 CLI process at random offsets and compare SHA-256 against the source once the
 engine lands.
 
-Current state: **77 Rust tests pass**, clippy is warning-free, and the frontend
+Current state: **78 Rust tests pass**, clippy is warning-free, and the frontend
 typechecks and builds. Engine tests cover byte-exact transfers, pause/resume,
 engine restarts, ETag/content changes, `429`, dropped connections, permanent
 truncation, redirects, auth failures, and traversal filenames.

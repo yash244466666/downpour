@@ -39,7 +39,7 @@ Status as of 2026-10-30.
       redirects, auth failure, and traversal filenames.
 - [x] Byte-exact output verified by SHA-256 in every transfer test.
 
-Evidence: `cargo test --workspace` (77 tests) plus a CLI smoke run that paused
+Evidence: `cargo test --workspace` (78 tests) plus a CLI smoke run that paused
 a 20 MiB download at ~36%, resumed it, and matched the server's SHA-256.
 
 ## Next: M2 acceptance

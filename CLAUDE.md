@@ -15,7 +15,7 @@ dashboard still shows mock data. Do not describe unfinished features as working.
 
 | Area | State |
 |---|---|
-| Rust workspace | Compiles; 77 tests pass; clippy `-D warnings` clean |
+| Rust workspace | Compiles; 78 tests pass; clippy `-D warnings` clean |
 | Shared types / IPC contract | DTOs, error codes, framing, handshake types |
 | SQLite schema + migrations | Initial schema, WAL, STRICT tables, download queries |
 | Segment planner / filename safety | Planner exists but drives M2; filename hardening live |
@@ -254,7 +254,7 @@ pnpm --dir apps/desktop build
 - Crash tests use a spawned CLI process + SIGKILL (`taskkill /F` on Windows)
   and compare SHA-256 against the source.
 - UI tests currently stop at typecheck/build; Vitest + Playwright land with M3.
-- Current total: **77 tests** (28 core, 17 engine integration, 6 store, 6 testkit,
+- Current total: **78 tests** (28 core, 18 engine integration, 6 store, 6 testkit,
   4 types, plus IPC/media/grabber/nm-host units).
 - Never add a test that downloads from the public internet.
 

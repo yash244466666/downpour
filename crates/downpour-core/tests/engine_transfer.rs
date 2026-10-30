@@ -508,6 +508,24 @@ async fn unsupported_scheme_is_rejected_at_add_time() {
 }
 
 #[test]
+fn run_future_is_send() {
+    fn assert_send<F: std::future::Future + Send>(_: F) {}
+
+    let temp = tempfile::tempdir().unwrap();
+    let mut engine = test_engine(temp.path());
+    let id = engine
+        .add(AddDownloadRequest {
+            url: "http://127.0.0.1:1/file".to_owned(),
+            ..AddDownloadRequest::default()
+        })
+        .unwrap();
+
+    // Never polled: this is a compile-time bound check that the future can be
+    // spawned by the UI runtime (M3).
+    assert_send(engine.run(id, CancelToken::new(), None));
+}
+
+#[test]
 fn pattern_fixture_is_deterministic() {
     assert_eq!(pattern_byte(0), 0);
     assert_eq!(pattern_byte(251), 0);

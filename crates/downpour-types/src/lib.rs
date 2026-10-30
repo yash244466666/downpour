@@ -265,6 +265,10 @@ pub struct AddDownloadRequest {
     pub headers: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub cookies: BTreeMap<String, String>,
+    /// Headers used for this process only and never written to SQLite
+    /// (browser cookies, authorization from a handoff).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub ephemeral_headers: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub referer: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -108,9 +108,7 @@ async fn run(cli: Cli) -> Result<()> {
             );
             Ok(())
         }
-        Command::RegisterBrowsers => {
-            bail!("browser registration arrives with the native-messaging host (M5)")
-        }
+        Command::RegisterBrowsers => register_browsers(),
         Command::List { json, limit } => list(&db, &dir, json, limit),
         Command::Info { id, json } => info(&db, &dir, &id, json),
         Command::Pause { id } => pause(&db, &dir, &id),
@@ -139,6 +137,125 @@ async fn run(cli: Cli) -> Result<()> {
 
 /// Open the engine. Only commands that will run transfers recover interrupted
 /// rows; listing or pausing must not flip a download owned by another process.
+const NM_HOST_NAME: &str = "com.downpour.nm";
+/// Stable Chromium extension ID derived from the public key shipped in
+/// `extensions/browser/chromium/manifest.json`.
+const CHROME_EXTENSION_ID: &str = "lelbkegljeljlebagmalnnocmcmgpdjg";
+
+fn register_browsers() -> Result<()> {
+    let host = locate_native_host()?;
+    let manifest = serde_json::json!({
+        "name": NM_HOST_NAME,
+        "description": "Downpour native messaging host",
+        "path": host.to_string_lossy(),
+        "type": "stdio",
+        "allowed_origins": [format!("chrome-extension://{CHROME_EXTENSION_ID}/")],
+    });
+    let bytes = serde_json::to_vec_pretty(&manifest)?;
+
+    #[cfg(not(windows))]
+    {
+        let mut written = 0_usize;
+        for base in browser_config_dirs() {
+            if !base.exists() {
+                continue;
+            }
+            let dir = base.join("NativeMessagingHosts");
+            std::fs::create_dir_all(&dir)?;
+            let path = dir.join(format!("{NM_HOST_NAME}.json"));
+            std::fs::write(&path, &bytes)?;
+            println!("wrote {}", path.display());
+            written += 1;
+        }
+        if written == 0 {
+            bail!(
+                "no supported Chromium-based browser profile found; install Chrome, \
+                 Chromium, Edge, or Brave and retry"
+            );
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        let manifest_dir = downpour_core::paths::data_dir().join("native-messaging");
+        std::fs::create_dir_all(&manifest_dir)?;
+        let path = manifest_dir.join(format!("{NM_HOST_NAME}.json"));
+        std::fs::write(&path, &bytes)?;
+        for key in [
+            r"Software\Google\Chrome\NativeMessagingHosts\com.downpour.nm",
+            r"Software\Chromium\NativeMessagingHosts\com.downpour.nm",
+            r"Software\Microsoft\Edge\NativeMessagingHosts\com.downpour.nm",
+            r"Software\BraveSoftware\Brave-Browser\NativeMessagingHosts\com.downpour.nm",
+        ] {
+            let status = std::process::Command::new("reg")
+                .args(["add", key, "/ve", "/t", "REG_SZ", "/d"])
+                .arg(&path)
+                .arg("/f")
+                .status()?;
+            if !status.success() {
+                eprintln!("could not register {key}");
+            }
+        }
+        println!("registered native messaging host for Chromium browsers");
+    }
+
+    Ok(())
+}
+
+fn locate_native_host() -> Result<PathBuf> {
+    if let Some(path) = std::env::var_os("DOWNPOUR_NM_HOST") {
+        let path = PathBuf::from(path);
+        if path.is_file() {
+            return Ok(path);
+        }
+        bail!(
+            "DOWNPOUR_NM_HOST does not point at a file: {}",
+            path.display()
+        );
+    }
+
+    let executable = std::env::current_exe().context("locate the CLI binary")?;
+    let name = if cfg!(windows) {
+        "downpour-nm-host.exe"
+    } else {
+        "downpour-nm-host"
+    };
+    if let Some(directory) = executable.parent() {
+        let candidate = directory.join(name);
+        if candidate.is_file() {
+            return Ok(candidate);
+        }
+    }
+    bail!("cannot find {name}; build the workspace or set DOWNPOUR_NM_HOST")
+}
+
+#[cfg(not(windows))]
+fn browser_config_dirs() -> Vec<PathBuf> {
+    let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
+        return Vec::new();
+    };
+
+    if cfg!(target_os = "macos") {
+        let base = home.join("Library/Application Support");
+        vec![
+            base.join("Google/Chrome"),
+            base.join("Chromium"),
+            base.join("Microsoft Edge"),
+            base.join("BraveSoftware/Brave-Browser"),
+        ]
+    } else {
+        let config = std::env::var_os("XDG_CONFIG_HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| home.join(".config"));
+        vec![
+            config.join("google-chrome"),
+            config.join("chromium"),
+            config.join("microsoft-edge"),
+            config.join("BraveSoftware/Brave-Browser"),
+        ]
+    }
+}
+
 fn open_engine(db: &Option<PathBuf>, dir: &Option<PathBuf>, recover: bool) -> Result<Engine> {
     let db = db
         .clone()

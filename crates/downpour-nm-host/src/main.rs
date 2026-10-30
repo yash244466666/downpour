@@ -1,69 +1,175 @@
 //! Browser native-messaging host.
 //!
 //! Browsers frame messages as a 4-byte little-endian length followed by JSON.
-//! Chrome caps host→browser messages at 1 MB, so this binary only ever forwards
-//! commands and compact status summaries — never file bytes or full lists.
+//! Chrome caps host→browser messages at 1 MB, so this binary only ever
+//! forwards commands and compact status summaries — never file bytes.
+//!
+//! Each browser message is translated to one engine IPC request:
+//! `add` → `download.add`, `list` → `download.list`, and so on.
 
 use std::io::{self, Read, Write};
+use std::path::PathBuf;
+use std::time::Duration;
+
+use downpour_ipc::{ClientKind, IpcClient, Request};
+use serde_json::{Value, json};
 
 const MAX_HOST_TO_BROWSER: usize = 1024 * 1024;
 const MAX_BROWSER_TO_HOST: usize = 64 * 1024 * 1024;
 
 fn main() {
-    // NOTE(M5): validate argv[1] — Chromium passes the extension origin,
-    // Firefox passes the manifest path and add-on id.
     if let Err(error) = run() {
         eprintln!("downpour-nm-host: {error}");
         std::process::exit(1);
     }
 }
 
-fn run() -> io::Result<()> {
-    let mut stdin = io::stdin().lock();
-    let mut stdout = io::stdout().lock();
+fn run() -> Result<(), Box<dyn std::error::Error>> {
+    validate_invocation()?;
 
-    while let Some(frame) = read_frame(&mut stdin)? {
-        let request: serde_json::Value = match serde_json::from_slice(&frame) {
-            Ok(value) => value,
-            Err(error) => {
-                write_json(
-                    &mut stdout,
-                    &serde_json::json!({
-                        "error": {"code": "invalid_json", "message": error.to_string()}
-                    }),
-                )?;
-                continue;
-            }
-        };
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
 
-        let method = request
-            .get("method")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or_default();
+    runtime.block_on(async {
+        let mut client = connect_with_retry().await?;
+        let mut stdin = io::stdin().lock();
+        let mut stdout = io::stdout().lock();
+        let mut next_id = 1_u64;
 
-        let response = match method {
-            "ping" => serde_json::json!({
-                "result": {
-                    "pong": true,
-                    "version": env!("CARGO_PKG_VERSION"),
-                    "protocol_version": downpour_types::PROTOCOL_VERSION,
+        while let Some(frame) = read_browser_frame(&mut stdin)? {
+            let message: Value = match serde_json::from_slice(&frame) {
+                Ok(message) => message,
+                Err(error) => {
+                    write_browser_message(
+                        &mut stdout,
+                        &json!({"error": {"code": "invalid_json", "message": error.to_string()}}),
+                    )?;
+                    continue;
                 }
-            }),
-            _ => serde_json::json!({
-                "error": {
-                    "code": "engine_not_connected",
-                    "message": "engine IPC is not wired yet"
+            };
+
+            let method = message
+                .get("method")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let engine_method = match method {
+                "ping" => "ping",
+                "add" => "download.add",
+                "list" => "download.list",
+                "pause" => "download.pause",
+                "resume" => "download.resume",
+                "cancel" => "download.cancel",
+                "remove" => "download.remove",
+                other => {
+                    write_browser_message(
+                        &mut stdout,
+                        &json!({
+                            "error": {
+                                "code": "unknown_method",
+                                "message": format!("unknown method: {other}")
+                            }
+                        }),
+                    )?;
+                    continue;
                 }
-            }),
-        };
+            };
 
-        write_json(&mut stdout, &response)?;
-    }
+            let request = Request {
+                id: next_id,
+                method: engine_method.to_owned(),
+                params: message.get("params").cloned().unwrap_or(Value::Null),
+            };
+            next_id += 1;
 
-    Ok(())
+            let response = match client.call(&request).await {
+                Ok(response) => response,
+                Err(error) => {
+                    write_browser_message(
+                        &mut stdout,
+                        &json!({"error": {"code": "engine_error", "message": error.to_string()}}),
+                    )?;
+                    continue;
+                }
+            };
+
+            let envelope = match (response.result, response.error) {
+                (Some(result), _) => json!({ "result": result }),
+                (None, Some(error)) => json!({ "error": error }),
+                (None, None) => json!({
+                    "error": {"code": "internal", "message": "empty engine response"}
+                }),
+            };
+            write_browser_message(&mut stdout, &envelope)?;
+        }
+        Ok::<(), Box<dyn std::error::Error>>(())
+    })
 }
 
-fn read_frame<R: Read>(reader: &mut R) -> io::Result<Option<Vec<u8>>> {
+/// Chrome passes the extension origin; Firefox passes the manifest path and
+/// add-on id. Anything else is not a browser we registered.
+fn validate_invocation() -> Result<(), io::Error> {
+    let mut args = std::env::args().skip(1);
+    let Some(first) = args.next() else {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "this binary is launched by a browser, not by hand",
+        ));
+    };
+    if first.starts_with("chrome-extension://") {
+        return Ok(());
+    }
+    if std::path::Path::new(&first).is_file() {
+        return Ok(());
+    }
+    Err(io::Error::new(
+        io::ErrorKind::InvalidInput,
+        "unrecognized browser invocation arguments",
+    ))
+}
+
+async fn connect_with_retry() -> Result<IpcClient, String> {
+    let first_error = match IpcClient::connect(ClientKind::NativeHost).await {
+        Ok(client) => return Ok(client),
+        Err(error) => error.to_string(),
+    };
+
+    launch_desktop_app();
+    for _ in 0..25 {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        if let Ok(client) = IpcClient::connect(ClientKind::NativeHost).await {
+            return Ok(client);
+        }
+    }
+    Err(format!(
+        "cannot reach the Downpour engine ({first_error}); start the app once and retry"
+    ))
+}
+
+fn launch_desktop_app() {
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Some(path) = std::env::var_os("DOWNPOUR_APP") {
+        candidates.push(PathBuf::from(path));
+    }
+    if let Ok(executable) = std::env::current_exe() {
+        if let Some(directory) = executable.parent() {
+            for name in ["downpour-desktop", "Downpour", "downpour"] {
+                candidates.push(directory.join(name));
+            }
+        }
+    }
+
+    for candidate in candidates {
+        if candidate.is_file() {
+            let _ = std::process::Command::new(candidate)
+                .arg("--background")
+                .spawn();
+            return;
+        }
+    }
+}
+
+fn read_browser_frame<R: Read>(reader: &mut R) -> io::Result<Option<Vec<u8>>> {
     let mut length = [0_u8; 4];
     match reader.read_exact(&mut length) {
         Ok(()) => {}
@@ -84,7 +190,7 @@ fn read_frame<R: Read>(reader: &mut R) -> io::Result<Option<Vec<u8>>> {
     Ok(Some(frame))
 }
 
-fn write_json<W: Write>(writer: &mut W, value: &serde_json::Value) -> io::Result<()> {
+fn write_browser_message<W: Write>(writer: &mut W, value: &Value) -> io::Result<()> {
     let bytes = serde_json::to_vec(value).map_err(io::Error::other)?;
     if bytes.len() > MAX_HOST_TO_BROWSER {
         return Err(io::Error::new(
@@ -104,19 +210,29 @@ mod tests {
 
     #[test]
     fn round_trips_a_frame() {
-        let value = serde_json::json!({"method": "ping"});
+        let value = json!({"method": "ping"});
         let mut buffer = Vec::new();
-        write_json(&mut buffer, &value).unwrap();
+        write_browser_message(&mut buffer, &value).unwrap();
 
         let mut cursor = io::Cursor::new(buffer);
-        let frame = read_frame(&mut cursor).unwrap().unwrap();
-        let decoded: serde_json::Value = serde_json::from_slice(&frame).unwrap();
+        let frame = read_browser_frame(&mut cursor).unwrap().unwrap();
+        let decoded: Value = serde_json::from_slice(&frame).unwrap();
         assert_eq!(decoded, value);
     }
 
     #[test]
     fn clean_eof_is_not_an_error() {
         let mut cursor = io::Cursor::new(Vec::new());
-        assert!(read_frame(&mut cursor).unwrap().is_none());
+        assert!(read_browser_frame(&mut cursor).unwrap().is_none());
+    }
+
+    #[test]
+    fn rejects_oversized_browser_frames() {
+        let mut buffer = Vec::new();
+        let huge = (MAX_BROWSER_TO_HOST + 1) as u32;
+        buffer.extend_from_slice(&huge.to_le_bytes());
+        buffer.extend_from_slice(&[0_u8; 8]);
+        let mut cursor = io::Cursor::new(buffer);
+        assert!(read_browser_frame(&mut cursor).is_err());
     }
 }

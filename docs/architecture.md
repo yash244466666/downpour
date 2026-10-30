@@ -125,14 +125,18 @@ via `rusqlite_migration`, one writer connection on a dedicated thread. Settings
 live in SQLite and are only mutated through engine commands; the UI never talks
 to the database.
 
-## IPC
+## IPC (implemented)
 
-- Unix domain socket at `$XDG_RUNTIME_DIR/downpour/engine.sock` (0700) or a
-  user-scoped named pipe on Windows.
-- Newline-delimited JSON, 8 MiB frame cap, request ids, 10 s read timeout.
-- A 32-byte token generated per start, written to a 0600 file; the first frame
-  carries it. On Unix the peer UID is also checked.
-- Progress is coalesced at 4–10 Hz; one event per chunk would melt the webview.
+- Unix domain socket at `$XDG_RUNTIME_DIR/downpour/engine.sock` (directory
+  0700) or the namespaced pipe `downpour-engine` on Windows.
+- Newline-delimited JSON, 8 MiB frame cap. One buffered connection per client;
+  the handshake and all later frames share it.
+- A 32-byte token generated per app start, written to a 0600 file. The first
+  frame is a `Hello` carrying it; a bad token closes the connection.
+- Implemented methods: `ping`/`engine.info`, `download.add`, `download.list`,
+  `download.pause`, `download.resume`, `download.cancel`, `download.remove`.
+- Browser cookies and handoff headers are ephemeral: they live in the engine's
+  memory for the process and are never written to SQLite.
 
 See [ipc-protocol.md](ipc-protocol.md).
 
@@ -143,10 +147,13 @@ forward to the engine, exit on EOF. Chromium passes the extension origin as
 `argv[1]`; Firefox passes the manifest path and add-on id. Host→browser messages
 are capped at 1 MB, so only commands and compact summaries cross the boundary.
 
-Extension download take-over is `downloads.onCreated` → `cancel()` → `erase()` →
-hand off URL + cookies + referer + UA. A brief failed-download flash and a
-leftover partial file are unavoidable; `blob:` and `data:` URLs cannot be
-handed off at all.
+Extension download take-over is `downloads.onCreated` → ping the engine →
+`cancel()` → `erase()` → hand off URL + cookies + referer + UA. If the engine is
+offline the browser download proceeds normally. A brief failed-download flash
+and a leftover partial file are unavoidable; `blob:` and `data:` URLs cannot be
+handed off at all. The native host validates Chrome's extension-origin argv and
+Firefox's manifest-path argv, forwards one message at a time, and never writes
+diagnostics to stdout.
 
 ## Security boundaries
 

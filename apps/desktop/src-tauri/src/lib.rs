@@ -14,11 +14,17 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use chrono::{Datelike, Timelike};
 use downpour_core::schedule::{parse_minutes, window_allows};
 use downpour_core::{CancelToken, Engine, EngineConfig, ProgressSample, RunOutcome};
+use downpour_ipc::transport::{self, Stream};
+use downpour_ipc::{IpcServer, Request, Response, read_frame, server_handshake, write_frame};
 use downpour_store::downloads::DownloadRecord;
-use downpour_types::{AddDownloadRequest, DownloadId, DownloadState, EngineInfo};
+use downpour_types::{
+    AddDownloadRequest, DownloadId, DownloadSource, DownloadState, EngineInfo, ErrorCode, ErrorInfo,
+};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_autostart::ManagerExt;
+use tokio::io::BufReader;
 
 struct AppState {
     db_path: PathBuf,
@@ -612,6 +618,236 @@ fn notify_complete(app: &AppHandle, name: &str) {
         .show();
 }
 
+#[derive(Debug, Deserialize)]
+struct IpcAddParams {
+    url: String,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    directory: Option<String>,
+    #[serde(default)]
+    connections: Option<u16>,
+    #[serde(default)]
+    start_now: bool,
+    #[serde(default)]
+    referer: Option<String>,
+    #[serde(default)]
+    user_agent: Option<String>,
+    #[serde(default)]
+    cookie_header: Option<String>,
+    #[serde(default)]
+    headers: BTreeMap<String, String>,
+}
+
+fn parse_cookie_header(value: &str) -> BTreeMap<String, String> {
+    value
+        .split(';')
+        .filter_map(|pair| {
+            let (name, value) = pair.trim().split_once('=')?;
+            (!name.is_empty()).then(|| (name.to_owned(), value.to_owned()))
+        })
+        .collect()
+}
+
+fn ipc_error(id: u64, message: impl Into<String>) -> Response {
+    Response::error(id, ErrorInfo::new(ErrorCode::Internal, message.into()))
+}
+
+fn ipc_dispatch(app: &AppHandle, request: &Request) -> Response {
+    let id = request.id;
+    match request.method.as_str() {
+        "ping" | "engine.info" => match serde_json::to_value(engine_info()) {
+            Ok(value) => Response::ok(id, value),
+            Err(error) => ipc_error(id, error.to_string()),
+        },
+        "download.list" => {
+            let state = app.state::<AppState>();
+            let engine = match open_engine(&state) {
+                Ok(engine) => engine,
+                Err(error) => return ipc_error(id, error),
+            };
+            let records = match engine.list(500) {
+                Ok(records) => records,
+                Err(error) => return ipc_error(id, error.to_string()),
+            };
+            let speeds = lock(&state.speeds).clone();
+            let views: Vec<DownloadView> = records
+                .iter()
+                .map(|record| {
+                    let speed = speeds.get(&record.id.to_string()).copied().unwrap_or(0);
+                    DownloadView::from_record(record, speed)
+                })
+                .collect();
+            match serde_json::to_value(views) {
+                Ok(value) => Response::ok(id, value),
+                Err(error) => ipc_error(id, error.to_string()),
+            }
+        }
+        "download.add" => {
+            let params: IpcAddParams = match serde_json::from_value(request.params.clone()) {
+                Ok(params) => params,
+                Err(error) => return ipc_error(id, format!("invalid params: {error}")),
+            };
+            let state = app.state::<AppState>();
+            let mut engine = match open_engine(&state) {
+                Ok(engine) => engine,
+                Err(error) => return ipc_error(id, error),
+            };
+            let cookies = params
+                .cookie_header
+                .as_deref()
+                .map(parse_cookie_header)
+                .unwrap_or_default();
+            let download_id = match engine.add(AddDownloadRequest {
+                url: params.url,
+                file_name: params.name,
+                dest_dir: params.directory,
+                connections: params.connections,
+                referer: params.referer,
+                user_agent: params.user_agent,
+                cookies,
+                ephemeral_headers: params.headers,
+                start_immediately: params.start_now,
+                source: DownloadSource::BrowserExtension,
+                ..AddDownloadRequest::default()
+            }) {
+                Ok(download_id) => download_id,
+                Err(error) => return ipc_error(id, error.to_string()),
+            };
+            if params.start_now {
+                if let Err(error) = start_run(app, &download_id.to_string()) {
+                    return ipc_error(id, error);
+                }
+            }
+            let _ = app.emit("downloads-changed", ());
+            Response::ok(id, serde_json::json!({ "id": download_id.to_string() }))
+        }
+        "download.pause" => ipc_id_method(app, request, |state, parsed, raw| {
+            if let Some(handle) = lock(&state.running).get(raw).cloned() {
+                handle.cancel.cancel();
+                return Ok(());
+            }
+            let mut engine = open_engine(state)?;
+            engine.pause(parsed).map_err(|error| error.to_string())
+        }),
+        "download.resume" => ipc_id_method(app, request, |state, parsed, raw| {
+            let mut engine = open_engine(state)?;
+            engine.requeue(parsed).map_err(|error| error.to_string())?;
+            start_run(app, raw)
+        }),
+        "download.cancel" => ipc_id_method(app, request, |state, parsed, raw| {
+            if let Some(handle) = lock(&state.running).get(raw).cloned() {
+                handle
+                    .cancel_after
+                    .store(true, std::sync::atomic::Ordering::SeqCst);
+                handle.cancel.cancel();
+                return Ok(());
+            }
+            let mut engine = open_engine(state)?;
+            engine.cancel(parsed).map_err(|error| error.to_string())
+        }),
+        "download.remove" => ipc_id_method(app, request, |state, parsed, _raw| {
+            let mut engine = open_engine(state)?;
+            engine.remove(parsed).map_err(|error| error.to_string())
+        }),
+        other => ipc_error(id, format!("unknown method: {other}")),
+    }
+}
+
+fn ipc_id_method(
+    app: &AppHandle,
+    request: &Request,
+    handler: impl FnOnce(&AppState, DownloadId, &str) -> Result<(), String>,
+) -> Response {
+    let id = request.id;
+    let raw = match request.params.get("id").and_then(serde_json::Value::as_str) {
+        Some(raw) => raw.to_owned(),
+        None => return ipc_error(id, "missing id"),
+    };
+    let parsed = match parse_id(&raw) {
+        Ok(parsed) => parsed,
+        Err(error) => return ipc_error(id, error),
+    };
+    let state = app.state::<AppState>();
+    match handler(&state, parsed, &raw) {
+        Ok(()) => {
+            let _ = app.emit("downloads-changed", ());
+            Response::ok(id, serde_json::json!({ "ok": true }))
+        }
+        Err(error) => ipc_error(id, error),
+    }
+}
+
+async fn run_ipc_server(app: AppHandle) {
+    let token = match transport::generate_token().and_then(|token| {
+        transport::write_token(&token)?;
+        Ok(token)
+    }) {
+        Ok(token) => token,
+        Err(error) => {
+            tracing::error!(%error, "cannot create the IPC token");
+            return;
+        }
+    };
+
+    let server = match IpcServer::bind() {
+        Ok(server) => server,
+        Err(error) => {
+            tracing::error!(%error, "cannot bind the IPC socket");
+            return;
+        }
+    };
+
+    loop {
+        match server.accept().await {
+            Ok(stream) => {
+                let app = app.clone();
+                let token = token.clone();
+                tauri::async_runtime::spawn(handle_ipc_client(app, stream, token));
+            }
+            Err(error) => {
+                tracing::warn!(%error, "IPC accept failed");
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            }
+        }
+    }
+}
+
+async fn handle_ipc_client(app: AppHandle, stream: Stream, token: String) {
+    let mut connection = BufReader::new(stream);
+    let hello = match server_handshake(&mut connection, &token).await {
+        Ok(hello) => hello,
+        Err(error) => {
+            tracing::warn!(%error, "IPC handshake rejected");
+            return;
+        }
+    };
+    tracing::debug!(client = ?hello.client, "IPC client connected");
+
+    loop {
+        let frame = match read_frame(&mut connection).await {
+            Ok(Some(frame)) => frame,
+            Ok(None) => break,
+            Err(error) => {
+                tracing::warn!(%error, "IPC frame error");
+                break;
+            }
+        };
+        let request: Request = match serde_json::from_slice(&frame) {
+            Ok(request) => request,
+            Err(error) => {
+                let response = ipc_error(0, format!("invalid request: {error}"));
+                let _ = write_frame(&mut connection, &response).await;
+                continue;
+            }
+        };
+        let response = ipc_dispatch(&app, &request);
+        if write_frame(&mut connection, &response).await.is_err() {
+            break;
+        }
+    }
+}
+
 fn load_state() -> AppState {
     let db_path = downpour_core::paths::database_path();
     let mut config = EngineConfig::default();
@@ -697,6 +933,11 @@ pub fn run() {
         .setup(|app| {
             app.manage(load_state());
             build_tray(app)?;
+
+            let ipc_app = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                run_ipc_server(ipc_app).await;
+            });
 
             let scheduler_app = app.handle().clone();
             tauri::async_runtime::spawn(async move {

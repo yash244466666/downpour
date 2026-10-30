@@ -9,12 +9,11 @@
 Ship Downpour milestone by milestone. Each milestone must leave the repository
 gate-clean and honest about what works.
 
-- **Current:** M4 complete (2026-10-31). Persistent queue with concurrency and
-  per-host limits, priorities, category filters, schedule window, autostart,
-  and single-instance. Updater is deferred to M8.
-- **Next:** M5 — IPC server/client, native-messaging host, Chromium/Edge
-  extension. Acceptance criteria are in `docs/roadmap.md`.
-- **Not implemented:** IPC server, browser extension, media pipeline, crawler,
+- **Current:** M5 complete (2026-10-31). Local IPC, native-messaging host,
+  Chromium/Edge take-over, and browser manifest registration.
+- **Next:** M6 — media detection, yt-dlp integration, HLS fallback.
+  Acceptance criteria are in `docs/roadmap.md`.
+- **Not implemented:** Firefox/Safari extensions, media pipeline, crawler,
   packaging/updater. Do not claim otherwise in code, docs, commits, or chat.
 
 ## 1. Bootstrap (every session)

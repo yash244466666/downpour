@@ -8,9 +8,13 @@ description = "Local IPC protocol and transport for Downpour"
 
 [dependencies]
 downpour-types = { path = "../downpour-types" }
+getrandom.workspace = true
 interprocess.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

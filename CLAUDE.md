@@ -1,7 +1,7 @@
 # CLAUDE.md — Downpour
 
 > Project context for Claude Code. Read this before changing anything.
-> Last updated: 2026-10-31 (M4 complete).
+> Last updated: 2026-10-31 (M5 complete).
 
 ## 1. What this is
 
@@ -10,12 +10,12 @@ manager in the IDM class: 1–32 parallel connections per file, crash-safe resum
 queues, scheduler, bandwidth throttling, browser download take-over, media
 grabbing (HLS/DASH/yt-dlp), and a site grabber — wrapped in a modern dashboard.
 
-**Current status: M4 complete.** Downloads, the desktop dashboard, and the
-queue/scheduler are live. Do not describe unfinished features as working.
+**Current status: M5 complete.** Downloads, the dashboard, the queue, and
+browser take-over are live. Do not describe unfinished features as working.
 
 | Area | State |
 |---|---|
-| Rust workspace | Compiles; 97 tests pass; clippy `-D warnings` clean |
+| Rust workspace | Compiles; 101 tests pass; clippy `-D warnings` clean |
 | Shared types / IPC contract | DTOs, error codes, framing, handshake types |
 | SQLite schema + migrations | Initial schema, WAL, STRICT tables, download queries |
 | Segment planner / filename safety | Planner exists but drives M2; filename hardening live |
@@ -23,14 +23,15 @@ queue/scheduler are live. Do not describe unfinished features as working.
 | Multi-connection transfer | 1–32 workers over a dynamic segment queue (M2) |
 | Throttling | Per-download and global byte-rate token bucket |
 | Crash testing | Engine restart tests + a real SIGKILL CLI test (Unix) |
-| IPC server/client | **Not implemented** — protocol types only (M5) |
+| IPC server/client | Local socket, token auth, add/list/pause/resume/cancel/remove |
+| Native host | Validates browser argv, forwards to IPC, auto-launches the app |
+| Browser extension | Chromium/Edge MV3 take-over + context menu |
 | CLI | `add`, `get`, `run`, `list`, `info`, `pause`, `cancel`, `version` work |
 | Desktop UI | **Live** dashboard; settings, tray, notifications, categories |
 | Queue / scheduler | Concurrency + per-host caps, priorities, schedule window |
 | Startup | Autostart toggle and single-instance focus |
 | Frontend tests | 20 Vitest unit tests (formatting, filters, mapping) |
-| Browser extension / native host | **Not implemented** — stdio framing only |
-| Media / grabber | Classification + batch-pattern expansion only |
+| Media / grabber | Classification + batch-pattern expansion only (M6/M7) |
 | Packaging / signing / updater | Tauri shell + icons; no release workflow |
 
 If your task touches an unimplemented area, the milestone that owns it is in
@@ -145,6 +146,7 @@ cargo run -p downpour-cli -- run <ID>         # Ctrl-C pauses, rerun resumes
 cargo run -p downpour-cli -- list
 cargo run -p downpour-cli -- info <ID>
 cargo run -p downpour-cli -- cancel <ID>      # only when not running
+cargo run -p downpour-cli -- register-browsers # Chromium/Edge native messaging
 
 # Useful
 cargo check -p downpour-desktop              # Tauri shell only
@@ -260,9 +262,9 @@ pnpm --dir apps/desktop build
 - Crash tests use a spawned CLI process + SIGKILL (`taskkill /F` on Windows)
   and compare SHA-256 against the source.
 - UI tests currently stop at typecheck/build; Vitest + Playwright land with M3.
-- Current total: **97 Rust tests** (42 core, 22 engine integration, 1 CLI
-  crash, 6 store, 6 testkit, 4 types, plus IPC/media/grabber/nm-host units)
-  and **20 frontend tests** (Vitest).
+- Current total: **101 Rust tests** (42 core, 22 engine integration, 1 CLI
+  crash, 6 store, 6 testkit, 4 types, 6 IPC transport/protocol, plus
+  media/grabber/native-host units) and **20 frontend tests** (Vitest).
 - Never add a test that downloads from the public internet.
 
 ## 11. Milestones
@@ -276,11 +278,8 @@ Full detail in `docs/roadmap.md`.
 | M2 | Multi-connection, dynamic segmentation, throttle, retries, kill-9 tests | ✅ |
 | M3 | Full UI wired to engine, tray, notifications, settings | ✅ |
 | M4 | Queue, scheduler, categories, autostart, single-instance | ✅ |
-| M5 | IPC server/client, native host, Chromium/Edge extension | next |
-| M3 | Full UI wired to engine, tray, notifications, settings | |
-| M4 | Queue, scheduler, categories, autostart, single-instance, updater | |
-| M5 | IPC server/client, native host, Chromium/Edge extension | |
-| M6 | yt-dlp, media sniffing, HLS fallback | |
+| M5 | IPC server/client, native host, Chromium/Edge extension | ✅ |
+| M6 | yt-dlp, media detection, HLS fallback | next |
 | M7 | Site grabber, batch import | |
 | M8 | Packaging, signing, notarization, release CI | |
 | M9 | Accessibility, i18n, diagnostics, docs | |
@@ -302,9 +301,14 @@ limits, category filters, a start/stop scheduler, autostart, and
 single-instance. The updater is deferred to M8, where release signing keys
 exist; the updater UI is not shipped yet.
 
-**M5 exit criteria:** a local IPC server/client with token auth, the
+**M5 exit criteria (met):** a local IPC server/client with token auth, the
 native-messaging host registered by the CLI, and a Chromium/Edge extension that
-takes over downloads and hands over cookies, referer, and user agent.
+takes over downloads and hands over cookies, referer, and user agent. Firefox
+and Safari extensions are not shipped.
+
+**M6 exit criteria:** media URLs are detected (HLS manifests + direct media),
+yt-dlp can be configured and run with cookie handoff, and an HLS fallback
+downloads a stream with quality selection.
 
 ## 12. Branching and releases
 
@@ -335,18 +339,25 @@ the grabber:
 
 ## 14. Known traps
 
-- `pnpm-workspace.yaml` already lists `extensions/browser`, which has no
-  `package.json` yet. Add one when M5 starts; pnpm tolerates the missing project.
+- `extensions/browser/chromium` is plain MV3 JavaScript, not a pnpm project;
+  `pnpm-workspace.yaml` still lists `extensions/browser` and pnpm tolerates the
+  missing `package.json`. Firefox/Safari loaders are not shipped.
 - Tauri capability schema (`apps/desktop/src-tauri/gen/schemas/...`) is generated
   at build time and gitignored; editors may show it as missing until first build.
 - `pnpm tauri dev` requires a display; CI runs `cargo check/test` only.
 - One `Engine` runs **one download at a time** (many connections per download).
   The desktop app gives each running download its own engine/connection; the
-  queue (M4) will bound concurrency.
+  scheduler bounds concurrency.
 - `Engine::open` performs crash recovery once per process. Any later engine
   (per Tauri command, per download, CLI `list`/`pause`/`cancel`) must use
   `open_without_recovery`, or it will flip a live transfer to `paused`. Only
   CLI `run`/`get` recover.
+- The IPC handshake and every later frame must use **one** buffered connection
+  per client; a fresh `BufReader` per frame loses bytes already sent.
+- Browser cookies and handoff headers are ephemeral (in-memory only). Never
+  persist them; the SQLite `headers_enc` keyring path is still TODO.
+- The Chromium extension ID (`CHROME_EXTENSION_ID` in the CLI) must match the
+  `key` in `extensions/browser/chromium/manifest.json`.
 - The desktop scheduler ticks every 1.5 s, starts **queued** downloads only
   (never paused ones) within concurrency/per-host limits, and pauses running
   transfers outside the schedule window. Do not auto-start paused rows; that
@@ -354,8 +365,8 @@ the grabber:
 - Segments are finer-grained than workers (about 3×), and workers pull from a
   shared queue; do not reintroduce per-worker fixed segments.
 - Ctrl-C in the CLI pauses (commits progress, keeps the `.downpour-part`).
-  `downpour pause <id>` only works on a download no live process owns; the
-  shared daemon arrives with IPC in M5.
+  `downpour pause <id>` works in-process; cross-process pause uses the IPC
+  methods (`download.pause`) through the app or native host.
 - A no-range download always restarts from byte zero; never write a restarted
   body at a non-zero offset.
 - Linux WebKitGTK rendering glitches: try

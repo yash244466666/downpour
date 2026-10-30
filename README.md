@@ -12,13 +12,13 @@ Downpour brings IDM-class downloading — segmented transfers, crash-safe resume
 queues, browser take-over, and media grabbing — to all three desktop platforms
 with an open-source implementation and a modern interface.
 
-> **Status: M4 (queue and scheduling).** Downloads work end to end — probe,
+> **Status: M5 (browser integration).** Downloads work end to end — probe,
 > 1–32 parallel connections over a dynamic segment queue, crash-safe SQLite
 > checkpoints, resume, pause, throttling, SHA-256 verification — with a live
-> dashboard, a persistent queue (concurrency and per-host limits, priorities),
-> category filters, a start/stop schedule, autostart, and single-instance.
-> Browser integration, media grabbing, and the site grabber are **not
-> implemented yet**. See the [roadmap](docs/roadmap.md).
+> dashboard, persistent queue, scheduler, autostart, and a Chromium/Edge
+> extension that takes over browser downloads over native messaging. Media
+> grabbing and the site grabber are **not implemented yet**. See the
+> [roadmap](docs/roadmap.md).
 
 ## Why Downpour
 
@@ -38,6 +38,9 @@ traditionally Windows-only, closed-source, and visually dated. Downpour is:
 
 - **Persistent queue** with concurrency and per-host limits, priorities,
   Start all / Pause all, and automatic scheduling within a start/stop window.
+- **Browser take-over (Chromium/Edge)**: the extension hands downloads,
+  cookies, referer, and user agent to the engine via the native-messaging host.
+- **Local IPC** over a Unix socket / Windows named pipe with a per-start token.
 - **Live desktop dashboard** wired to the engine: add, pause, resume, cancel,
   remove, reveal in folder, category filters, and persistent settings.
 - Tray icon, close-to-tray, completion notifications, autostart, and
@@ -170,6 +173,16 @@ pnpm --dir apps/desktop dev
 The first Tauri build takes several minutes (debuginfo linking); later runs are
 seconds.
 
+### Browser take-over
+
+```bash
+cargo build -p downpour-nm-host -p downpour-cli
+./target/debug/downpour register-browsers
+```
+
+Then load `extensions/browser/chromium` unpacked in Chrome/Edge and start
+Downpour once. See [extensions/browser/README.md](extensions/browser/README.md).
+
 ### Download something from the CLI
 
 ```bash
@@ -234,7 +247,7 @@ with deterministic byte patterns — no public-internet tests. Crash tests kill 
 CLI process at random offsets and compare SHA-256 against the source once the
 engine lands.
 
-Current state: **97 Rust tests and 20 frontend unit tests pass**, clippy is
+Current state: **101 Rust tests and 20 frontend unit tests pass**, clippy is
 warning-free, and the frontend typechecks and builds. Engine tests cover byte-exact transfers, segmented
 concurrency, throttling, pause/resume, engine restarts, a real SIGKILL resume,
 ETag/content changes, `429`, dropped connections, permanent truncation,
@@ -259,9 +272,8 @@ redirects, auth failures, and traversal filenames.
 | M2 | Multi-connection, dynamic segmentation, throttling, retries, crash tests | ✅ |
 | M3 | Full UI wired to engine, tray, notifications, settings | ✅ |
 | M4 | Queue, scheduler, categories, autostart, single-instance | ✅ |
-| M5 | IPC server/client, native host, Chromium/Edge extension | next |
-| M5 | IPC server/client, native host, Chromium/Edge extension | |
-| M6 | yt-dlp, media detection, HLS fallback | |
+| M5 | IPC server/client, native host, Chromium/Edge extension | ✅ |
+| M6 | yt-dlp, media detection, HLS fallback | next |
 | M7 | Site grabber, batch import | |
 | M8 | Packaging, signing, notarization, release CI | |
 | M9 | Accessibility, i18n, diagnostics, docs | |

@@ -660,6 +660,39 @@ pub fn update_validators(
     Ok(())
 }
 
+/// Read a setting's raw JSON value.
+pub fn get_setting(conn: &Connection, key: &str) -> Result<Option<String>> {
+    let value = conn
+        .query_row(
+            "SELECT value_json FROM settings WHERE key = ?1",
+            params![key],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?;
+    Ok(value)
+}
+
+/// Insert or replace a setting.
+pub fn set_setting(conn: &Connection, key: &str, value_json: &str) -> Result<()> {
+    conn.execute(
+        "INSERT INTO settings (key, value_json, updated_at) VALUES (?1, ?2, ?3) \
+         ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, \
+         updated_at = excluded.updated_at",
+        params![key, value_json, now_ms()],
+    )?;
+    Ok(())
+}
+
+/// Delete a download row. Segments and history references cascade or remain
+/// as history; the caller decides whether to remove files.
+pub fn delete(conn: &Connection, id: DownloadId) -> Result<usize> {
+    let changed = conn.execute(
+        "DELETE FROM downloads WHERE id = ?1",
+        params![id.to_string()],
+    )?;
+    Ok(changed)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

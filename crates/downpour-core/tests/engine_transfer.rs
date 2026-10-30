@@ -630,6 +630,44 @@ async fn speed_limit_throttles_a_single_stream() {
 }
 
 #[test]
+fn passive_engines_do_not_recover_running_downloads() {
+    let temp = tempfile::tempdir().unwrap();
+    let db = temp.path().join("engine.db");
+    let id = {
+        let mut engine = Engine::open(&db, EngineConfig::default()).unwrap();
+        engine
+            .add(AddDownloadRequest {
+                url: "http://127.0.0.1:1/file".to_owned(),
+                ..AddDownloadRequest::default()
+            })
+            .unwrap()
+    };
+    {
+        let store = downpour_store::Store::open(&db).unwrap();
+        store
+            .connection()
+            .execute(
+                "UPDATE downloads SET status = 'downloading' WHERE id = ?1",
+                [id.to_string()],
+            )
+            .unwrap();
+    }
+
+    let passive = Engine::open_without_recovery(&db, EngineConfig::default()).unwrap();
+    assert_eq!(
+        passive.get(id).unwrap().unwrap().state,
+        DownloadState::Downloading
+    );
+    drop(passive);
+
+    let active = Engine::open(&db, EngineConfig::default()).unwrap();
+    assert_eq!(
+        active.get(id).unwrap().unwrap().state,
+        DownloadState::Paused
+    );
+}
+
+#[test]
 fn run_future_is_send() {
     fn assert_send<F: std::future::Future + Send>(_: F) {}
 

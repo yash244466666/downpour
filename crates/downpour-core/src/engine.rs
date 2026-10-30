@@ -58,6 +58,7 @@ impl Default for RetryPolicy {
 #[derive(Debug, Clone)]
 pub struct EngineConfig {
     pub default_dir: PathBuf,
+    pub default_connections: u16,
     pub user_agent: String,
     pub retry: RetryPolicy,
     pub checkpoint_interval: Duration,
@@ -71,6 +72,7 @@ impl Default for EngineConfig {
     fn default() -> Self {
         Self {
             default_dir: crate::paths::default_download_dir(),
+            default_connections: 8,
             user_agent: format!("Downpour/{}", env!("CARGO_PKG_VERSION")),
             retry: RetryPolicy::default(),
             checkpoint_interval: Duration::from_secs(1),
@@ -109,26 +111,48 @@ pub struct Engine {
 
 impl Engine {
     /// Open (or create) a database and recover interrupted downloads.
+    ///
+    /// Call this once per process, at startup. A second engine opened while a
+    /// download is running must use [`open_without_recovery`], or it would
+    /// mistake the live transfer for a crash.
     pub fn open(db_path: impl AsRef<Path>, config: EngineConfig) -> EngineResult<Self> {
+        Self::open_inner(db_path, config, true)
+    }
+
+    /// Open a database without touching the state of running downloads.
+    pub fn open_without_recovery(
+        db_path: impl AsRef<Path>,
+        config: EngineConfig,
+    ) -> EngineResult<Self> {
+        Self::open_inner(db_path, config, false)
+    }
+
+    fn open_inner(
+        db_path: impl AsRef<Path>,
+        config: EngineConfig,
+        recover: bool,
+    ) -> EngineResult<Self> {
         if let Some(parent) = db_path.as_ref().parent() {
             if !parent.as_os_str().is_empty() {
                 std::fs::create_dir_all(parent)?;
             }
         }
         let store = Store::open(db_path)?;
-        Self::with_store(store, config)
+        Self::with_store(store, config, recover)
     }
 
     /// In-memory engine for tests.
     pub fn open_in_memory(config: EngineConfig) -> EngineResult<Self> {
         let store = Store::open_in_memory()?;
-        Self::with_store(store, config)
+        Self::with_store(store, config, true)
     }
 
-    fn with_store(store: Store, config: EngineConfig) -> EngineResult<Self> {
-        let recovered = downloads::recover_interrupted(store.connection())?;
-        if recovered > 0 {
-            tracing::info!(recovered, "marked interrupted downloads as paused");
+    fn with_store(store: Store, config: EngineConfig, recover: bool) -> EngineResult<Self> {
+        if recover {
+            let recovered = downloads::recover_interrupted(store.connection())?;
+            if recovered > 0 {
+                tracing::info!(recovered, "marked interrupted downloads as paused");
+            }
         }
 
         let client = Client::builder()
@@ -211,7 +235,10 @@ impl Engine {
                 dest_dir: dest_dir.to_string_lossy().into_owned(),
                 temp_path: temp_path.to_string_lossy().into_owned(),
                 final_path: final_path.to_string_lossy().into_owned(),
-                connections: request.connections.unwrap_or(8).clamp(1, 32),
+                connections: request
+                    .connections
+                    .unwrap_or(self.config.default_connections)
+                    .clamp(1, 32),
                 source: request.source,
                 checksum_sha256: request.checksum_sha256,
                 referer: request.referer,
@@ -236,6 +263,36 @@ impl Engine {
 
     pub fn list_runnable(&self) -> EngineResult<Vec<DownloadRecord>> {
         Ok(downloads::list_runnable(self.store.connection())?)
+    }
+
+    /// Read a setting as JSON.
+    pub fn setting(&self, key: &str) -> EngineResult<Option<serde_json::Value>> {
+        let raw = downloads::get_setting(self.store.connection(), key)?;
+        Ok(raw.and_then(|value| serde_json::from_str(&value).ok()))
+    }
+
+    /// Persist a setting as JSON.
+    pub fn set_setting(&mut self, key: &str, value: &serde_json::Value) -> EngineResult<()> {
+        let encoded = serde_json::to_string(value)
+            .map_err(|error| EngineError::Internal(error.to_string()))?;
+        downloads::set_setting(self.store.connection(), key, &encoded)?;
+        Ok(())
+    }
+
+    /// Forget a download that is not running. Files on disk are left alone;
+    /// the partial temp file is removed.
+    pub fn remove(&mut self, id: DownloadId) -> EngineResult<()> {
+        let record = self.record(id)?;
+        if record.state.is_running() {
+            return Err(EngineError::Internal(
+                "download is running; cancel it first".to_owned(),
+            ));
+        }
+        if let Some(temp) = record.temp_path.as_deref() {
+            let _ = std::fs::remove_file(temp);
+        }
+        downloads::delete(self.store.connection(), id)?;
+        Ok(())
     }
 
     /// Mark a queued or paused download as paused.

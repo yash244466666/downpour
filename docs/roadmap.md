@@ -54,14 +54,23 @@ a 20 MiB download at ~36%, resumed it, and matched the server's SHA-256.
 
 Concurrency across downloads is **not** part of M2; it lands with the queue.
 
-## Next: M3 acceptance
+## Definition of done for M3
 
-- The dashboard lists real downloads from the engine (no mock data).
-- Add, pause, resume, cancel, and remove work from the UI.
-- Detail view with per-segment progress and speed.
-- Settings persist to SQLite; theme and defaults survive restarts.
-- Tray icon, notifications, and close-to-tray behavior.
-- UI tests (Vitest) for formatting, filters, and dialog validation.
+- [x] The dashboard lists real downloads from the engine (mock data only in the
+      browser-only preview, labelled).
+- [x] Add, pause, resume, cancel, remove, and reveal-in-folder work from the UI
+      (verified against a live Tauri window).
+- [x] Live progress and speed while downloading.
+- [x] Settings persist to SQLite and survive restarts.
+- [x] Tray icon and close-to-tray behavior; completion notifications.
+- [x] 12 Vitest unit tests for formatting and record mapping.
+
+## Next: M4 acceptance
+
+- Persistent queue with concurrency limits, priorities, and per-host caps.
+- Categories/rules and a start/stop scheduler.
+- Autostart, single-instance, and updater wiring.
+- Queue state survives restarts; the UI can reorder and pause the queue.
 
 ## Lean MVP cut line
 

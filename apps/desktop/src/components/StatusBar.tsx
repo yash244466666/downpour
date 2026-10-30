@@ -3,7 +3,7 @@ import { Database, Wifi } from "lucide-react";
 import { fetchEngineInfo, type EngineInfo } from "../lib/engine";
 import { cn } from "../lib/utils";
 
-export function StatusBar() {
+export function StatusBar({ preview }: { preview: boolean }) {
   const [engine, setEngine] = useState<EngineInfo | null>(null);
 
   useEffect(() => {
@@ -28,13 +28,17 @@ export function StatusBar() {
         <Database className="h-3 w-3" />
         {engine
           ? `Engine v${engine.version} · protocol ${engine.protocol_version}`
-          : "Engine offline · UI preview"}
+          : preview
+            ? "Engine offline · UI preview"
+            : "Engine connected"}
       </span>
       <span className="hidden items-center gap-1 sm:inline-flex">
         <Wifi className="h-3 w-3" />
-        {engine ? `${engine.os}/${engine.arch}` : "M0 scaffold"}
+        {engine ? `${engine.os}/${engine.arch}` : "browser preview"}
       </span>
-      <span className="ml-auto hidden sm:inline">Preview data</span>
+      <span className="ml-auto hidden sm:inline">
+        {preview ? "Preview data" : "Live data"}
+      </span>
       <span>Downpour 0.1.0</span>
     </footer>
   );

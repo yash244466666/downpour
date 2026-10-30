@@ -6,18 +6,18 @@
 
 ![Downpour dashboard](docs/assets/dashboard.png)
 
-<sub>M0 dashboard preview — data is mocked until the engine lands in M1.</sub>
+<sub>M3 dashboard — live downloads from the embedded engine.</sub>
 
 Downpour brings IDM-class downloading — segmented transfers, crash-safe resume,
 queues, browser take-over, and media grabbing — to all three desktop platforms
 with an open-source implementation and a modern interface.
 
-> **Status: M2 (multi-connection engine).** Downloads work end to end — probe,
+> **Status: M3 (live desktop UI).** Downloads work end to end — probe,
 > 1–32 parallel connections over a dynamic segment queue, crash-safe SQLite
-> checkpoints, resume, pause, throttling, SHA-256 verification — driven by the
-> CLI. The desktop dashboard still shows **mock data**; browser integration,
-> media grabbing, and the site grabber are **not implemented yet**. See the
-> [roadmap](docs/roadmap.md).
+> checkpoints, resume, pause, throttling, SHA-256 verification — and the
+> dashboard is wired to the engine (add, pause, resume, cancel, settings,
+> tray, notifications). Browser integration, media grabbing, and the site
+> grabber are **not implemented yet**. See the [roadmap](docs/roadmap.md).
 
 ## Why Downpour
 
@@ -33,8 +33,11 @@ traditionally Windows-only, closed-source, and visually dated. Downpour is:
 
 ## Features
 
-### Working today (M2)
+### Working today (M3)
 
+- **Live desktop dashboard** wired to the engine: add, pause, resume, cancel,
+  remove, reveal in folder, and persistent settings.
+- Tray icon, close-to-tray, and a completion notification.
 - **Real downloads over 1–32 connections** with probe-based size/range/ETag
   detection, `.downpour-part` temp files, and atomic rename.
 - **Dynamic segmentation**: segments are finer than workers, so a fast worker
@@ -47,7 +50,8 @@ traditionally Windows-only, closed-source, and visually dated. Downpour is:
   checksum is supplied.
 - Rust workspace with shared DTOs, SQLite schema/migrations, segment planner,
   filename sanitizer, IPC framing, and a fault-injecting test server.
-- Tauri 2 desktop shell with a React 19 dashboard preview (mock data).
+- Tauri 2 desktop shell with a React 19 dashboard; the browser-only preview
+  keeps clearly labelled mock data.
 - Dark/light themes, filters, search, add-URL dialog, engine-info bridge.
 - CI for Linux, Windows, and macOS.
 
@@ -217,6 +221,7 @@ cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 pnpm --dir apps/desktop typecheck
+pnpm --dir apps/desktop test
 pnpm --dir apps/desktop build
 ```
 
@@ -225,8 +230,8 @@ with deterministic byte patterns — no public-internet tests. Crash tests kill 
 CLI process at random offsets and compare SHA-256 against the source once the
 engine lands.
 
-Current state: **91 Rust tests pass**, clippy is warning-free, and the frontend
-typechecks and builds. Engine tests cover byte-exact transfers, segmented
+Current state: **92 Rust tests and 12 frontend unit tests pass**, clippy is
+warning-free, and the frontend typechecks and builds. Engine tests cover byte-exact transfers, segmented
 concurrency, throttling, pause/resume, engine restarts, a real SIGKILL resume,
 ETag/content changes, `429`, dropped connections, permanent truncation,
 redirects, auth failures, and traversal filenames.
@@ -248,8 +253,8 @@ redirects, auth failures, and traversal filenames.
 | M0 | Workspace, schema, planner, filename safety, IPC types, testkit, dashboard, CI, docs | ✅ |
 | M1 | Probe, single-stream transfer, SQLite journal/resume, pause, CLI | ✅ |
 | M2 | Multi-connection, dynamic segmentation, throttling, retries, crash tests | ✅ |
-| M3 | Full UI wired to engine, tray, notifications, settings | next |
-| M4 | Queue, scheduler, categories, autostart, single-instance, updater | |
+| M3 | Full UI wired to engine, tray, notifications, settings | ✅ |
+| M4 | Queue, scheduler, categories, autostart, single-instance, updater | next |
 | M5 | IPC server/client, native host, Chromium/Edge extension | |
 | M6 | yt-dlp, media detection, HLS fallback | |
 | M7 | Site grabber, batch import | |

@@ -13,6 +13,7 @@ import {
   type LucideProps,
 } from "lucide-react";
 import { formatSpeed } from "../lib/format";
+import type { DownloadKind } from "../lib/downloads";
 import type { Filter } from "../lib/filters";
 import { cn } from "../lib/utils";
 import { Logo } from "./Logo";
@@ -36,27 +37,33 @@ const NAV: Array<{ filter: Filter; label: string; icon: IconComponent }> = [
 
 const CATEGORIES: Array<{
   label: string;
-  count: number;
+  kind: DownloadKind;
   icon: IconComponent;
   className: string;
 }> = [
-  { label: "Videos", count: 1, icon: Film, className: "text-violet" },
-  { label: "Music", count: 1, icon: Music, className: "text-rose" },
-  { label: "Documents", count: 1, icon: FileText, className: "text-accent" },
-  { label: "Archives", count: 2, icon: Archive, className: "text-amber" },
-  { label: "Programs", count: 3, icon: Package, className: "text-success" },
+  { label: "Videos", kind: "video", icon: Film, className: "text-violet" },
+  { label: "Music", kind: "audio", icon: Music, className: "text-rose" },
+  { label: "Documents", kind: "document", icon: FileText, className: "text-accent" },
+  { label: "Archives", kind: "archive", icon: Archive, className: "text-amber" },
+  { label: "Programs", kind: "app", icon: Package, className: "text-success" },
 ];
 
 export function Sidebar({
   counts,
+  categoryCounts,
   filter,
   onFilter,
   totalSpeed,
+  preview,
+  onOpenFolder,
 }: {
   counts: Counts;
+  categoryCounts: Partial<Record<DownloadKind, number>>;
   filter: Filter;
   onFilter: (filter: Filter) => void;
   totalSpeed: number;
+  preview: boolean;
+  onOpenFolder: () => void;
 }) {
   return (
     <aside className="hidden w-64 shrink-0 flex-col border-r border-line bg-surface/60 lg:flex">
@@ -113,14 +120,14 @@ export function Sidebar({
               key={category.label}
               type="button"
               className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] text-muted transition-colors hover:bg-surface-2 hover:text-fg"
-              title="Category filters arrive with the engine"
+              title="Category filtering arrives in a later milestone"
             >
               <category.icon
                 className={cn("h-4 w-4 shrink-0", category.className)}
               />
               <span className="truncate">{category.label}</span>
               <span className="ml-auto rounded-md bg-surface-2 px-1.5 py-0.5 text-[10px] tabular-nums">
-                {category.count}
+                {categoryCounts[category.kind] ?? 0}
               </span>
             </button>
           ))}
@@ -131,9 +138,19 @@ export function Sidebar({
         <div className="rounded-xl border border-line bg-surface p-3">
           <div className="flex items-center justify-between text-[11px] text-muted">
             <span>Session throughput</span>
-            <span className="inline-flex items-center gap-1 text-success">
-              <span className="h-1.5 w-1.5 rounded-full bg-success" />
-              live
+            <span
+              className={cn(
+                "inline-flex items-center gap-1",
+                preview ? "text-warning" : "text-success",
+              )}
+            >
+              <span
+                className={cn(
+                  "h-1.5 w-1.5 rounded-full",
+                  preview ? "bg-warning" : "bg-success",
+                )}
+              />
+              {preview ? "preview" : "live"}
             </span>
           </div>
           <div className="mt-1.5 text-lg font-semibold tabular-nums">
@@ -146,8 +163,8 @@ export function Sidebar({
         </div>
         <button
           type="button"
+          onClick={onOpenFolder}
           className="mt-3 flex w-full items-center gap-2 rounded-lg px-2 py-2 text-[12px] text-muted transition-colors hover:bg-surface-2 hover:text-fg"
-          title="Opens once the engine is wired (M1)"
         >
           <FolderOpen className="h-4 w-4" />
           Open download folder

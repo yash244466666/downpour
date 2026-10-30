@@ -28,6 +28,7 @@ export function Header({
   theme,
   onToggleTheme,
   onAdd,
+  onSettings,
 }: {
   filter: Filter;
   counts: Counts;
@@ -37,6 +38,7 @@ export function Header({
   theme: Theme;
   onToggleTheme: () => void;
   onAdd: () => void;
+  onSettings: () => void;
 }) {
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -114,7 +116,7 @@ export function Header({
           )}
         </IconButton>
 
-        <IconButton label="Settings (coming in M3)" disabled>
+        <IconButton label="Settings" onClick={onSettings}>
           <Settings className="h-4 w-4" />
         </IconButton>
       </div>

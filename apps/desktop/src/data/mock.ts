@@ -1,32 +1,7 @@
-export type DownloadKind =
-  | "video"
-  | "audio"
-  | "document"
-  | "archive"
-  | "app"
-  | "image"
-  | "other";
+import type { DownloadRow } from "../lib/downloads";
 
-export type DownloadStatus =
-  | "downloading"
-  | "paused"
-  | "queued"
-  | "completed"
-  | "failed";
-
-export interface DemoDownload {
-  id: string;
-  name: string;
-  host: string;
-  kind: DownloadKind;
-  size: number;
-  downloaded: number;
-  speed: number;
-  connections: number;
-  status: DownloadStatus;
-  eta?: number;
-  added: string;
-}
+/** Mock data is only used by the browser preview (no Tauri runtime). */
+export type DemoDownload = DownloadRow;
 
 export const initialDownloads: DemoDownload[] = [
   {

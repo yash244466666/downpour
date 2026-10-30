@@ -1137,12 +1137,15 @@ dependencies = [
  "anyhow",
  "clap",
  "downpour-core",
+ "downpour-grabber",
  "downpour-store",
  "downpour-testkit",
  "downpour-types",
+ "reqwest",
  "serde_json",
  "tempfile",
  "tokio",
+ "url",
 ]
 
 [[package]]
@@ -1172,6 +1175,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "downpour-core",
+ "downpour-grabber",
  "downpour-ipc",
  "downpour-media",
  "downpour-store",
@@ -1196,6 +1200,7 @@ dependencies = [
 name = "downpour-grabber"
 version = "0.1.0"
 dependencies = [
+ "downpour-testkit",
  "downpour-types",
  "reqwest",
  "scraper",

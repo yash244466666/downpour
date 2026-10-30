@@ -9,13 +9,12 @@
 Ship Downpour milestone by milestone. Each milestone must leave the repository
 gate-clean and honest about what works.
 
-- **Current:** M6 complete (2026-10-31). HLS fallback, yt-dlp detection and
-  execution, media sniffing in the extension, media routing in adds.
-- **Next:** M7 — site grabber and batch import. Acceptance criteria are in
-  `docs/roadmap.md`.
-- **Not implemented:** managed yt-dlp auto-download, user-facing quality
-  selection, Firefox/Safari extensions, crawler, packaging/updater. Do not
-  claim otherwise in code, docs, commits, or chat.
+- **Current:** M7 complete (2026-10-31). Robots-aware CLI grabber, persisted
+  frontier, batch import with pattern expansion and preview.
+- **Next:** M8 — packaging, signing, notarization, release CI.
+- **Not implemented:** managed yt-dlp auto-download, quality selection,
+  Firefox/Safari extensions, grabber UI, signing. Do not claim otherwise in
+  code, docs, commits, or chat.
 
 ## 1. Bootstrap (every session)
 

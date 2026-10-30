@@ -9,6 +9,7 @@ import {
   Film,
   FolderOpen,
   Image,
+  ListPlus,
   Music,
   Package,
   Pause,
@@ -100,6 +101,7 @@ export function DownloadList({
   onPriority,
   onStartAll,
   onPauseAll,
+  onBatch,
 }: {
   downloads: DownloadRow[];
   total: number;
@@ -113,6 +115,7 @@ export function DownloadList({
   onPriority: (id: string, delta: number) => void;
   onStartAll: () => void;
   onPauseAll: () => void;
+  onBatch: () => void;
 }) {
   return (
     <section className="mt-6 overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
@@ -152,6 +155,14 @@ export function DownloadList({
         </div>
 
         <div className="hidden items-center gap-1 sm:flex">
+          <button
+            type="button"
+            onClick={onBatch}
+            className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1.5 text-[11px] text-muted transition-colors hover:text-fg"
+          >
+            <ListPlus className="h-3.5 w-3.5" />
+            Batch
+          </button>
           <button
             type="button"
             onClick={onStartAll}

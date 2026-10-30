@@ -1,7 +1,37 @@
-//! Batch URL expansion and (later) the robots-aware site crawler.
+//! Robots-aware site crawler and IDM-style batch URL expansion.
+
+pub mod crawler;
+
+pub use crawler::{
+    FoundFile, Frontier, GrabError, GrabOptions, GrabResult, PageVisit, canonical_url, crawl,
+    extract_links, is_file_url,
+};
 
 /// Hard cap so a malicious pattern cannot allocate unbounded work.
 pub const MAX_EXPANSIONS: usize = 10_000;
+
+/// Expand a multi-line batch input: one pattern per line, blank lines and
+/// `#` comments ignored, duplicates removed, capped at `limit`.
+#[must_use]
+pub fn expand_lines(input: &str, limit: usize) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for line in input.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        for expanded in expand_patterns(line) {
+            if out.len() >= limit {
+                return out;
+            }
+            if seen.insert(expanded.clone()) {
+                out.push(expanded);
+            }
+        }
+    }
+    out
+}
 
 /// Expand IDM-style batch patterns:
 ///
@@ -173,6 +203,21 @@ mod tests {
         assert_eq!(expand_patterns("img[3-1].jpg"), vec!["img[3-1].jpg"]);
         assert_eq!(expand_patterns("img[abc].jpg"), vec!["img[abc].jpg"]);
         assert_eq!(expand_patterns("only{one}.txt"), vec!["only{one}.txt"]);
+    }
+
+    #[test]
+    fn expands_batch_lines_with_dedupe() {
+        let input = "# comment\n\nimg[1-2].png\nimg1.png\nfile{a,b}.zip\n";
+        assert_eq!(
+            expand_lines(input, 100),
+            vec!["img1.png", "img2.png", "filea.zip", "fileb.zip"]
+        );
+    }
+
+    #[test]
+    fn batch_lines_respect_the_limit() {
+        let out = expand_lines("x[1-100].bin", 10);
+        assert_eq!(out.len(), 10);
     }
 
     #[test]

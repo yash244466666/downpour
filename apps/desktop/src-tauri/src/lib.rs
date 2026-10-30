@@ -231,6 +231,11 @@ struct MediaTools {
 }
 
 #[tauri::command]
+fn expand_urls(input: String) -> Vec<String> {
+    downpour_grabber::expand_lines(&input, 500)
+}
+
+#[tauri::command]
 fn get_media_tools() -> MediaTools {
     let tools = downpour_media::detect_tools();
     MediaTools {
@@ -1017,6 +1022,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             engine_info,
             get_media_tools,
+            expand_urls,
             list_downloads,
             add_download,
             start_download,

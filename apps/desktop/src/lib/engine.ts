@@ -40,6 +40,10 @@ export async function getMediaTools(): Promise<MediaTools> {
   return invoke<MediaTools>("get_media_tools");
 }
 
+export async function expandUrls(input: string): Promise<string[]> {
+  return invoke<string[]>("expand_urls", { input });
+}
+
 export async function listDownloads(): Promise<EngineDownload[]> {
   return invoke<EngineDownload[]>("list_downloads");
 }

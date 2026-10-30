@@ -63,6 +63,25 @@ enum Command {
     Pause { id: String },
     /// Cancel a download and delete its partial file.
     Cancel { id: String },
+    /// Crawl a site and list (or queue) downloadable files.
+    Grab {
+        url: String,
+        #[arg(long, default_value_t = 2)]
+        depth: u32,
+        #[arg(long, default_value_t = 100)]
+        pages: u32,
+        /// Follow links to other origins.
+        #[arg(long)]
+        cross_origin: bool,
+        /// Ignore robots.txt (use only on sites you control).
+        #[arg(long)]
+        no_robots: bool,
+        #[arg(long, default_value_t = 500)]
+        delay_ms: u64,
+        /// Queue every discovered file.
+        #[arg(long)]
+        add: bool,
+    },
     /// Print engine and protocol version information.
     Version,
     /// Register native-messaging manifests for installed browsers.
@@ -113,6 +132,28 @@ async fn run(cli: Cli) -> Result<()> {
         Command::Info { id, json } => info(&db, &dir, &id, json),
         Command::Pause { id } => pause(&db, &dir, &id),
         Command::Cancel { id } => cancel(&db, &dir, &id),
+        Command::Grab {
+            url,
+            depth,
+            pages,
+            cross_origin,
+            no_robots,
+            delay_ms,
+            add,
+        } => {
+            grab(
+                &db,
+                &dir,
+                url,
+                depth,
+                pages,
+                cross_origin,
+                no_robots,
+                delay_ms,
+                add,
+            )
+            .await
+        }
         Command::Add(args) => {
             let mut engine = open_engine(&db, &dir, false)?;
             let id = queue(&mut engine, args)?;
@@ -254,6 +295,124 @@ fn browser_config_dirs() -> Vec<PathBuf> {
             config.join("BraveSoftware/Brave-Browser"),
         ]
     }
+}
+
+struct StoreFrontier<'a> {
+    store: &'a mut downpour_store::Store,
+    job_id: &'a str,
+}
+
+impl downpour_grabber::Frontier for StoreFrontier<'_> {
+    fn discovered(&mut self, url: &str, depth: u32) {
+        let _ = downpour_store::grabber::upsert_frontier(
+            self.store.connection(),
+            self.job_id,
+            url,
+            depth,
+            "pending",
+        );
+    }
+
+    fn visited(&mut self, url: &str) {
+        let _ = downpour_store::grabber::set_frontier_state(
+            self.store.connection(),
+            self.job_id,
+            url,
+            "visited",
+        );
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn grab(
+    db: &Option<PathBuf>,
+    dir: &Option<PathBuf>,
+    url: String,
+    depth: u32,
+    pages: u32,
+    cross_origin: bool,
+    no_robots: bool,
+    delay_ms: u64,
+    add: bool,
+) -> Result<()> {
+    let seed = url::Url::parse(&url).context("invalid seed URL")?;
+    if !matches!(seed.scheme(), "http" | "https") {
+        bail!("only http:// and https:// seeds are supported");
+    }
+
+    let db_path = db
+        .clone()
+        .unwrap_or_else(downpour_core::paths::database_path);
+    let mut store = downpour_store::Store::open(&db_path).context("open database")?;
+    let job_id = DownloadId::new().to_string();
+    downpour_store::grabber::insert_job(
+        store.connection(),
+        &downpour_store::grabber::NewGrabJob {
+            id: job_id.clone(),
+            seed_url: seed.to_string(),
+            filters_json: None,
+            max_depth: depth,
+            max_pages: pages,
+            same_origin: !cross_origin,
+            respect_robots: !no_robots,
+            created_at_ms: downpour_store::downloads::now_ms(),
+        },
+    )
+    .context("create grabber job")?;
+
+    let options = downpour_grabber::GrabOptions {
+        max_depth: depth,
+        max_pages: pages,
+        same_origin: !cross_origin,
+        respect_robots: !no_robots,
+        delay: std::time::Duration::from_millis(delay_ms),
+        ..downpour_grabber::GrabOptions::default()
+    };
+    let client = reqwest::Client::builder()
+        .user_agent(format!("Downpour/{}", env!("CARGO_PKG_VERSION")))
+        .build()
+        .context("build crawler client")?;
+
+    let result = {
+        let mut frontier = StoreFrontier {
+            store: &mut store,
+            job_id: &job_id,
+        };
+        downpour_grabber::crawl(&client, seed, &options, &mut frontier, &|| false, |visit| {
+            eprintln!(
+                "[{}] {} — {} links, {} files",
+                visit.depth, visit.url, visit.links, visit.files
+            );
+        })
+        .await
+        .context("crawl site")?
+    };
+
+    downpour_store::grabber::update_job(
+        store.connection(),
+        &job_id,
+        "completed",
+        result.pages.len() as u32,
+        result.files.len() as u32,
+    )
+    .context("update grabber job")?;
+
+    println!("{} pages, {} files", result.pages.len(), result.files.len());
+    for file in &result.files {
+        println!("{}", file.url);
+    }
+
+    if add {
+        let mut engine = open_engine(db, dir, false)?;
+        for file in result.files {
+            let id = engine.add(AddDownloadRequest {
+                url: file.url,
+                ..AddDownloadRequest::default()
+            })?;
+            println!("queued {id}");
+        }
+    }
+    Ok(())
 }
 
 fn open_engine(db: &Option<PathBuf>, dir: &Option<PathBuf>, recover: bool) -> Result<Engine> {

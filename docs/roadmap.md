@@ -134,13 +134,23 @@ Concurrency across downloads is **not** part of M2; it lands with the queue.
 - [ ] Windows and macOS installers verified on this machine (CI-only).
 - [ ] RPM target (dropped from the workflow to keep it reliable).
 
-## Next: M9 acceptance
+## Definition of done for M9
 
-- `downpour doctor` checks the database, folders, tools, IPC, and browser
-  manifests.
-- Keyboard focus is visible; reduced motion is honoured; dialogs autofocus.
-- Troubleshooting and accessibility docs exist.
-- i18n status documented honestly (English-only).
+- [x] `downpour doctor` checks the database, folders, tools, IPC, and browser
+      manifests.
+- [x] Visible keyboard focus; reduced-motion support; dialog autofocus.
+- [x] Troubleshooting, accessibility, and release docs.
+- [x] i18n status documented honestly (English-only; `ui.language` reserved).
+
+## Post-v1 backlog
+
+- Signed/notarized release builds (credentials required).
+- Updater channel, signing key, and `latest.json` publication.
+- Managed yt-dlp download with pinned SHA-256; HLS quality selection.
+- Firefox and Safari extensions; grabber UI.
+- Bengali localization and a full string table.
+- Dialog focus traps and automated axe/WCAG checks.
+- Optional `cargo deny`/`cargo audit` CI once license/advisory policy is set.
 
 ## Lean MVP cut line
 

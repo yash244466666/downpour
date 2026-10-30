@@ -84,6 +84,8 @@ enum Command {
     },
     /// Print engine and protocol version information.
     Version,
+    /// Check the database, folders, tools, IPC, and browser registration.
+    Doctor,
     /// Register native-messaging manifests for installed browsers.
     RegisterBrowsers,
 }
@@ -128,6 +130,7 @@ async fn run(cli: Cli) -> Result<()> {
             Ok(())
         }
         Command::RegisterBrowsers => register_browsers(),
+        Command::Doctor => doctor(&db, &dir).await,
         Command::List { json, limit } => list(&db, &dir, json, limit),
         Command::Info { id, json } => info(&db, &dir, &id, json),
         Command::Pause { id } => pause(&db, &dir, &id),
@@ -295,6 +298,173 @@ fn browser_config_dirs() -> Vec<PathBuf> {
             config.join("BraveSoftware/Brave-Browser"),
         ]
     }
+}
+
+async fn doctor(db: &Option<PathBuf>, dir: &Option<PathBuf>) -> Result<()> {
+    let mut failures = 0_usize;
+    println!(
+        "Downpour {} (protocol {})",
+        env!("CARGO_PKG_VERSION"),
+        downpour_types::PROTOCOL_VERSION
+    );
+    println!("{} / {}", std::env::consts::OS, std::env::consts::ARCH);
+    println!();
+
+    // Database.
+    let db_path = db
+        .clone()
+        .unwrap_or_else(downpour_core::paths::database_path);
+    match downpour_store::Store::open(&db_path) {
+        Ok(store) => {
+            let integrity: String = store
+                .connection()
+                .query_row("PRAGMA integrity_check", [], |row| row.get(0))
+                .unwrap_or_else(|_| "unknown".to_owned());
+            if integrity == "ok" {
+                report(
+                    true,
+                    "database",
+                    &format!("{} (integrity ok)", db_path.display()),
+                );
+            } else {
+                failures += 1;
+                report(
+                    false,
+                    "database",
+                    &format!("integrity check returned {integrity}"),
+                );
+            }
+        }
+        Err(error) => {
+            failures += 1;
+            report(
+                false,
+                "database",
+                &format!("{}: {error}", db_path.display()),
+            );
+        }
+    }
+
+    // Download folder.
+    let download_dir = dir
+        .clone()
+        .unwrap_or_else(downpour_core::paths::default_download_dir);
+    if let Err(error) = std::fs::create_dir_all(&download_dir) {
+        failures += 1;
+        report(
+            false,
+            "download folder",
+            &format!("{}: {error}", download_dir.display()),
+        );
+    } else {
+        let probe = download_dir.join(format!(".downpour-doctor-{}", std::process::id()));
+        match std::fs::write(&probe, b"ok").and_then(|()| std::fs::remove_file(&probe)) {
+            Ok(()) => report(true, "download folder", &download_dir.display().to_string()),
+            Err(error) => {
+                failures += 1;
+                report(
+                    false,
+                    "download folder",
+                    &format!("{}: {error}", download_dir.display()),
+                );
+            }
+        }
+    }
+
+    // Tools.
+    let tools = downpour_media::detect_tools();
+    match &tools.yt_dlp {
+        Some(path) => report(true, "yt-dlp", &path.display().to_string()),
+        None => report_warn(
+            "yt-dlp",
+            "not found — HLS uses the built-in fallback; DASH is unavailable",
+        ),
+    }
+    match &tools.ffmpeg {
+        Some(path) => report(true, "ffmpeg", &path.display().to_string()),
+        None => report_warn(
+            "ffmpeg",
+            "not found — remuxing and DASH mixing are unavailable",
+        ),
+    }
+
+    // IPC engine.
+    match downpour_ipc::IpcClient::connect(downpour_ipc::ClientKind::Cli).await {
+        Ok(mut client) => {
+            let request = downpour_ipc::Request {
+                id: 1,
+                method: "ping".to_owned(),
+                params: serde_json::json!({}),
+            };
+            match client.call(&request).await {
+                Ok(_) => report(true, "engine IPC", "running and reachable"),
+                Err(error) => report_warn("engine IPC", &format!("connection failed: {error}")),
+            }
+        }
+        Err(_) => report_warn("engine IPC", "app not running (start Downpour to test)"),
+    }
+
+    // Browser registration.
+    #[cfg(not(windows))]
+    {
+        let mut registered = 0_usize;
+        for base in browser_config_dirs() {
+            let path = base
+                .join("NativeMessagingHosts")
+                .join(format!("{NM_HOST_NAME}.json"));
+            if !path.is_file() {
+                continue;
+            }
+            registered += 1;
+            match std::fs::read_to_string(&path)
+                .ok()
+                .and_then(|body| serde_json::from_str::<serde_json::Value>(&body).ok())
+                .and_then(|value| {
+                    value
+                        .get("path")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_owned)
+                }) {
+                Some(host) if std::path::Path::new(&host).is_file() => {
+                    report(
+                        true,
+                        "browser manifest",
+                        &format!("{} -> {host}", path.display()),
+                    );
+                }
+                Some(host) => report_warn(
+                    "browser manifest",
+                    &format!("{} points at a missing host: {host}", path.display()),
+                ),
+                None => report_warn(
+                    "browser manifest",
+                    &format!("unreadable: {}", path.display()),
+                ),
+            }
+        }
+        if registered == 0 {
+            report_warn(
+                "browser manifest",
+                "not registered (run `downpour register-browsers`)",
+            );
+        }
+    }
+
+    println!();
+    if failures > 0 {
+        bail!("{failures} check(s) failed");
+    }
+    println!("all checks passed");
+    Ok(())
+}
+
+fn report(ok: bool, label: &str, detail: &str) {
+    let mark = if ok { "ok  " } else { "FAIL" };
+    println!("  {mark}  {label:<18} {detail}");
+}
+
+fn report_warn(label: &str, detail: &str) {
+    println!("  warn  {label:<18} {detail}");
 }
 
 struct StoreFrontier<'a> {

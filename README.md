@@ -12,13 +12,12 @@ Downpour brings IDM-class downloading — segmented transfers, crash-safe resume
 queues, browser take-over, and media grabbing — to all three desktop platforms
 with an open-source implementation and a modern interface.
 
-> **Status: M8 (packaging).** Downloads work end to end — probe, 1–32 parallel
-> connections, crash-safe resume, throttling, SHA-256 — with a live dashboard,
-> queue/scheduler, browser take-over, media handling, a robots-aware CLI
-> grabber, batch import, and release builds: a Linux `.deb` is verified
-> locally, and the release workflow produces NSIS/DMG/AppImage artifacts with
-> signing hooks documented. Hardening and docs are next. See the
-> [roadmap](docs/roadmap.md).
+> **Status: M9 (hardening and docs).** Downloads work end to end — probe, 1–32
+> parallel connections, crash-safe resume, throttling, SHA-256 — with a live
+> dashboard, queue/scheduler, browser take-over, media handling, a robots-aware
+> CLI grabber, batch import, packaging, and diagnostics (`downpour doctor`).
+> Signed/notarized builds, a live update channel, and the Bengali translation
+> are the remaining gaps. See the [roadmap](docs/roadmap.md).
 
 ## Why Downpour
 
@@ -38,6 +37,12 @@ traditionally Windows-only, closed-source, and visually dated. Downpour is:
 
 - **Persistent queue** with concurrency and per-host limits, priorities,
   Start all / Pause all, and automatic scheduling within a start/stop window.
+- **Diagnostics**: `downpour doctor` checks the database, folders, media
+  tools, IPC, and browser manifests. See
+  [docs/troubleshooting.md](docs/troubleshooting.md).
+- **Accessibility**: visible keyboard focus, reduced-motion support, labelled
+  dialogs/progress bars, accessible toggles. See
+  [docs/accessibility.md](docs/accessibility.md).
 - **Packaging**: `pnpm tauri build` produces installers; the `Release` workflow
   builds Linux, Windows, and universal macOS bundles plus the CLI and native
   host. See [docs/release.md](docs/release.md).
@@ -212,6 +217,7 @@ cargo build -p downpour-cli
 ./target/debug/downpour list
 ./target/debug/downpour info <id>
 ./target/debug/downpour cancel <id>  # only when no process is downloading it
+./target/debug/downpour doctor       # environment diagnostics
 ```
 
 `--db <path>` and `--dir <path>` (or `DOWNPOUR_DB` / `DOWNPOUR_DIR`) override
@@ -298,7 +304,7 @@ redirects, auth failures, and traversal filenames.
 | M6 | yt-dlp, media detection, HLS fallback | ✅ |
 | M7 | Site grabber, batch import | ✅ |
 | M8 | Packaging, signing, notarization, release CI | ✅ |
-| M9 | Accessibility, i18n, diagnostics, docs | next |
+| M9 | Accessibility, diagnostics, docs | ✅ |
 
 Detailed acceptance criteria live in [docs/roadmap.md](docs/roadmap.md).
 

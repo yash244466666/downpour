@@ -10,8 +10,8 @@ Status as of 2026-10-31.
 | **M3** | Full desktop UI wired to the engine: table, settings, tray, notifications | ✅ complete |
 | **M4** | Queue, priorities, category filters, scheduler, autostart, single-instance | ✅ complete |
 | **M5** | IPC server/client, native-messaging host, Chromium/Edge extension takeover | ✅ complete |
-| **M6** | yt-dlp integration, media detection UI, HLS fallback | ⏳ next |
-| **M7** | Site grabber + batch import/expansion | ⬜ |
+| **M6** | yt-dlp integration, media detection UI, HLS fallback | ✅ complete |
+| **M7** | Site grabber + batch import/expansion | ⏳ next |
 | **M8** | Packaging: NSIS per-user, universal DMG, AppImage/deb/rpm; signing/notarization; release CI | ⬜ |
 | **M9** | Hardening: accessibility, i18n, `downpour doctor`, docs | ⬜ |
 
@@ -93,13 +93,27 @@ Concurrency across downloads is **not** part of M2; it lands with the queue.
       8 MiB download; cookies were not persisted to SQLite.
 - [ ] Firefox/Safari extensions — not shipped.
 
-## Next: M6 acceptance
+## Definition of done for M6
 
-- HLS manifests are detected from the extension and classified.
-- yt-dlp is detected (system install first), configured, and can be run with
-  cookie handoff and process-tree cancellation.
-- An HLS fallback downloads a stream with quality selection.
-- Media downloads are visible in the dashboard with title/quality metadata.
+- [x] HLS/DASH/progressive URLs are classified; the extension sniffs manifests.
+- [x] yt-dlp is detected (system install) and runs with a 0600 cookie file,
+      progress parsing, and process-tree cancellation.
+- [x] The built-in HLS fallback picks the highest variant, downloads and
+      concatenates segments, decrypts AES-128, and refuses SAMPLE-AES.
+- [x] Media downloads appear in the dashboard and complete with a checksum.
+- [x] Verified end to end: HLS master playlist through the native host
+      completed byte-exact (3,072 bytes) with yt-dlp disabled.
+- [ ] Managed yt-dlp auto-download (pinned SHA-256) — not shipped; system
+      detection only.
+- [ ] User-facing quality selection — highest variant only.
+
+## Next: M7 acceptance
+
+- A robots-aware crawler with depth/page caps, per-host delay, and a persisted
+  frontier.
+- Link extraction from HTML, images/srcset, video/source, and CSS `url()`.
+- Batch URL import with `img[001-100].jpg`-style expansion and preview.
+- No auth bypass, no forms, identifiable user agent.
 
 ## Lean MVP cut line
 

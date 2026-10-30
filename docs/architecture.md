@@ -140,6 +140,17 @@ to the database.
 
 See [ipc-protocol.md](ipc-protocol.md).
 
+## Media (M6)
+
+Media URLs are classified in `downpour-media`. HLS master playlists choose the
+highest-bandwidth variant; media playlists are downloaded segment by segment
+with AES-128 decryption (SAMPLE-AES and unknown key methods are refused — no
+DRM). yt-dlp is detected on `PATH` and, when present, handles HLS/DASH with
+cookies in a 0600 Netscape file and process-group cancellation. DASH without
+yt-dlp fails with a clear message. Media jobs reuse the `downloads` rows and
+report progress through the same UI; they are not engine transfers, so pause
+stops and resume restarts them.
+
 ## Browser integration
 
 The native host is intentionally small: frame stdio, validate the caller,

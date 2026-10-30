@@ -17,6 +17,7 @@
 //! | `/retry-429/{size}/{fails}` | first request succeeds; next `fails` requests return `429` |
 //! | `/disposition/{size}?name=...` | serves a file with that `Content-Disposition` name |
 //! | `/slow/{size}/{chunk_kb}/{delay_ms}` | range-aware stream with a delay per chunk (records `Range` headers) |
+//! | `/hls/master.m3u8`, `/hls/media.m3u8`, `/hls/seg/{n}` | HLS fixtures |
 //! | `/redirect/{hops}/{size}` | `hops` redirects, then `/ok/{size}` |
 //! | `/auth/{size}` | always `401` |
 //!
@@ -122,6 +123,9 @@ impl TestServer {
             .route("/retry-429/{size}/{fails}", get(retry_429))
             .route("/disposition/{size}", get(disposition))
             .route("/slow/{size}/{chunk_kb}/{delay_ms}", get(slow))
+            .route("/hls/master.m3u8", get(hls_master))
+            .route("/hls/media.m3u8", get(hls_media))
+            .route("/hls/seg/{n}", get(hls_segment))
             .route("/redirect/{hops}/{size}", get(redirect))
             .route("/auth/{size}", get(auth))
             .with_state(state.clone());
@@ -373,6 +377,46 @@ async fn slow(
         }
     }
     response
+}
+
+/// Master playlist: two variants pointing at the same media playlist.
+async fn hls_master() -> Response {
+    let body = "#EXTM3U\n\
+        #EXT-X-STREAM-INF:BANDWIDTH=500000,RESOLUTION=640x360\n\
+        media.m3u8\n\
+        #EXT-X-STREAM-INF:BANDWIDTH=1500000,RESOLUTION=1280x720\n\
+        media.m3u8\n";
+    (
+        [(header::CONTENT_TYPE, "application/vnd.apple.mpegurl")],
+        body,
+    )
+        .into_response()
+}
+
+/// Media playlist with three small segments.
+async fn hls_media() -> Response {
+    let body = "#EXTM3U\n\
+        #EXT-X-TARGETDURATION:4\n\
+        #EXT-X-MEDIA-SEQUENCE:0\n\
+        #EXTINF:4,\n\
+        seg/0\n\
+        #EXTINF:4,\n\
+        seg/1\n\
+        #EXTINF:4,\n\
+        seg/2\n\
+        #EXT-X-ENDLIST\n";
+    (
+        [(header::CONTENT_TYPE, "application/vnd.apple.mpegurl")],
+        body,
+    )
+        .into_response()
+}
+
+/// One 1 KiB deterministic segment.
+async fn hls_segment(Path(n): Path<u64>) -> Response {
+    let start = n.saturating_mul(1024);
+    let body = pattern_body(start, start + 1023, 0);
+    ([(header::CONTENT_TYPE, "video/mp2t")], body).into_response()
 }
 
 async fn disposition(

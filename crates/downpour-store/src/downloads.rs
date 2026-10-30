@@ -346,6 +346,15 @@ pub fn list_runnable(conn: &Connection) -> Result<Vec<DownloadRecord>> {
     Ok(out)
 }
 
+/// Record a total size learned during an external (media) download.
+pub fn set_total_bytes(conn: &Connection, id: DownloadId, total_bytes: u64) -> Result<()> {
+    conn.execute(
+        "UPDATE downloads SET total_bytes = ?1, updated_at = ?2 WHERE id = ?3",
+        params![clamp_i64(total_bytes), now_ms(), id.to_string()],
+    )?;
+    Ok(())
+}
+
 /// Move a download in the queue.
 pub fn set_priority(conn: &Connection, id: DownloadId, priority: i64) -> Result<()> {
     conn.execute(
@@ -555,12 +564,12 @@ pub fn load_segments(conn: &Connection, id: DownloadId) -> Result<Vec<SegmentRec
 /// The file is synced by the writer thread before this transaction runs, so a
 /// committed offset never runs ahead of bytes on disk.
 pub fn commit_progress(
-    conn: &mut Connection,
+    conn: &Connection,
     id: DownloadId,
     downloaded: u64,
     segment: Option<&SegmentRecord>,
 ) -> Result<()> {
-    let tx = conn.transaction()?;
+    let tx = conn.unchecked_transaction()?;
     let now = now_ms();
     tx.execute(
         "UPDATE downloads SET downloaded_bytes = ?1, updated_at = ?2 WHERE id = ?3",

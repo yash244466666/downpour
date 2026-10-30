@@ -58,6 +58,8 @@ anyhow = "1.0"
 axum = "0.8"
 interprocess = { version = "2.4", features = ["tokio"] }
 m3u8-rs = "6.0"
+aes = "0.8"
+cbc = "0.1"
 scraper = "0.29"
 url = "2.5"
 texting_robots = "0.2"

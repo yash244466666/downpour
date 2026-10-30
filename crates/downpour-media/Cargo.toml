@@ -8,12 +8,20 @@ description = "Media detection, yt-dlp sidecar, and HLS support for Downpour"
 
 [dependencies]
 downpour-types = { path = "../downpour-types" }
+aes.workspace = true
+cbc.workspace = true
 hex.workspace = true
 m3u8-rs.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
+tempfile.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+downpour-testkit = { path = "../downpour-testkit" }
+tempfile.workspace = true

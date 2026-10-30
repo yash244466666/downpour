@@ -3,6 +3,9 @@
 //! yt-dlp (Unlicense) may be downloaded as an optional component; ffmpeg is
 //! detection-only because it is never bundled.
 
+pub mod hls;
+pub mod ytdlp;
+
 use std::path::{Path, PathBuf};
 
 /// Paths to optional external tools discovered on this machine.

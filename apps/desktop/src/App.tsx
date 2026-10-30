@@ -14,7 +14,7 @@ import {
   type DownloadRow,
 } from "./lib/downloads";
 import * as engine from "./lib/engine";
-import type { Settings } from "./lib/engine";
+import type { MediaTools, Settings } from "./lib/engine";
 import { fileNameFromUrl, guessKind } from "./lib/format";
 import { filterDownloads, type Filter } from "./lib/filters";
 import { useTheme } from "./lib/theme";
@@ -60,6 +60,7 @@ export default function App() {
   const [downloads, setDownloads] = useState<DownloadRow[]>(initialDownloads);
   const [preview, setPreview] = useState(true);
   const [settings, setSettings] = useState<Settings>(FALLBACK_SETTINGS);
+  const [mediaTools, setMediaTools] = useState<MediaTools | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
@@ -69,12 +70,14 @@ export default function App() {
 
   const refresh = useCallback(async () => {
     try {
-      const [records, nextSettings] = await Promise.all([
+      const [records, nextSettings, tools] = await Promise.all([
         engine.listDownloads(),
         engine.getSettings(),
+        engine.getMediaTools().catch(() => null),
       ]);
       setDownloads(records.map((record) => rowFromEngine(record)));
       setSettings(nextSettings);
+      if (tools) setMediaTools(tools);
       setPreview(false);
     } catch {
       // Browser preview: keep the mock rows and the preview badge.
@@ -369,6 +372,7 @@ export default function App() {
       {settingsOpen && (
         <SettingsDialog
           settings={settings}
+          mediaTools={mediaTools}
           onClose={() => setSettingsOpen(false)}
           onSave={(next) => void saveSettings(next)}
         />

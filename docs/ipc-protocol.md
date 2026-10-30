@@ -8,10 +8,10 @@ versioned independently of the app (currently `PROTOCOL_VERSION = 1`).
 
 | Platform | Address |
 |---|---|
-| Linux/macOS | `$XDG_RUNTIME_DIR/downpour/engine.sock` (directory mode 0700); fallback `$TMPDIR/downpour-$UID/engine.sock` |
-| Windows | Per-user named pipe derived from the user SID |
+| Linux/macOS | `$XDG_RUNTIME_DIR/downpour/engine.sock` (directory mode 0700); fallback `~/.local/share/downpour/downpour/engine.sock` when `XDG_RUNTIME_DIR` is unset |
+| Windows | Namespaced pipe `downpour-engine` |
 
-Environment override `DOWNPOUR_SOCKET` is reserved for tests and portable mode.
+The token file is `engine.token` in the per-user data directory (0600 on Unix).
 
 ## Framing
 
@@ -21,27 +21,19 @@ the connection.
 
 ## Handshake
 
-The first client frame must be:
+The first client frame is a `Hello` object (not a request):
 
 ```json
-{
-  "id": 0,
-  "method": "hello",
-  "params": {
-    "protocol_version": 1,
-    "token": "<32-byte hex token>",
-    "client": "ui"
-  }
-}
+{ "protocol_version": 1, "token": "<64-char hex token>", "client": "native_host" }
 ```
 
 `client` is one of `ui`, `cli`, `native_host`. The token is generated per engine
 start and written to `engine.token` (0600; owner-only DACL on Windows). A bad
-token closes the connection. The engine replies:
+token closes the connection. The engine does not send a handshake reply; the
+client may send its first request immediately.
 
-```json
-{ "id": 0, "result": { "protocol_version": 1, "engine": "0.1.0" } }
-```
+The client and server keep **one buffered connection** for the whole session.
+Creating a fresh `BufReader` per frame would discard bytes the peer already sent.
 
 ## Requests and responses
 
@@ -52,26 +44,28 @@ Response: `{ "id": <u64>, "result": <value> }` or
 `id` is chosen by the client and must be answered in the same order; the engine
 may process concurrently but responses carry the id.
 
-## Methods (planned)
+## Methods (implemented)
 
 | Method | Params | Result |
 |---|---|---|
-| `hello` | handshake above | engine info |
-| `engine.info` | `{}` | `EngineInfo` |
-| `download.add` | `AddDownloadRequest` | `DownloadSnapshot` |
-| `download.list` | `{ "filter": "all\|active\|queued\|completed" }` | `DownloadSnapshot[]` |
-| `download.get` | `{ "id": "<uuid>", "segments": true }` | snapshot with segments |
-| `download.pause` | `{ "id": "<uuid>" }` | snapshot |
-| `download.resume` | `{ "id": "<uuid>" }` | snapshot |
-| `download.cancel` | `{ "id": "<uuid>" }` | snapshot |
-| `download.remove` | `{ "id": "<uuid>", "delete_file": false }` | `{}` |
-| `queue.list` | `{}` | queue summaries |
-| `settings.get` | `{ "key": "..." }` | value |
-| `settings.set` | `{ "key": "...", "value": <json> }` | value |
-| `browser.add` | `BrowserContext` | snapshot (native host only) |
-| `browser.media` | media candidates | `{}` (native host only) |
+| `ping` / `engine.info` | `{}` | `EngineInfo` |
+| `download.add` | `{ url, name?, directory?, connections?, start_now?, referer?, user_agent?, cookie_header?, headers? }` | `{ "id": "<uuid>" }` |
+| `download.list` | `{}` | download views (same shape as the UI) |
+| `download.pause` | `{ "id": "<uuid>" }` | `{ "ok": true }` |
+| `download.resume` | `{ "id": "<uuid>" }` | `{ "ok": true }` |
+| `download.cancel` | `{ "id": "<uuid>" }` | `{ "ok": true }` |
+| `download.remove` | `{ "id": "<uuid>" }` | `{ "ok": true }` |
 
-## Events
+`cookie_header` is split into cookies and passed to the engine as ephemeral
+headers: they are used for this process only and never written to SQLite.
+
+### Planned
+
+`download.get` (per-segment detail), `queue.list`, `settings.get/set`,
+`browser.media`, and server-pushed events. The UI currently polls
+`download.list` at ~1 Hz.
+
+## Events (planned)
 
 Server-pushed frames have no `id`:
 

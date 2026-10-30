@@ -92,6 +92,8 @@ pub enum IpcError {
     Io(#[from] std::io::Error),
     #[error("protocol version mismatch (client {client}, engine {engine})")]
     ProtocolMismatch { client: u32, engine: u32 },
+    #[error("invalid IPC token")]
+    Unauthorized,
 }
 
 /// Serialize a value as one newline-terminated frame, enforcing the size cap.

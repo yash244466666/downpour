@@ -8,6 +8,7 @@
 //! Concurrency across downloads arrives with the queue (M4); one `Engine`
 //! drives one download at a time.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -107,6 +108,8 @@ pub struct Engine {
     store: Store,
     client: Client,
     config: EngineConfig,
+    /// Browser handoff headers, kept in memory only.
+    ephemeral_headers: HashMap<DownloadId, Vec<(String, String)>>,
 }
 
 impl Engine {
@@ -165,6 +168,7 @@ impl Engine {
             store,
             client,
             config,
+            ephemeral_headers: HashMap::new(),
         })
     }
 
@@ -181,10 +185,23 @@ impl Engine {
         if !matches!(url.scheme(), "http" | "https") {
             return Err(EngineError::UnsupportedScheme(url.scheme().to_owned()));
         }
+        let mut ephemeral = Vec::new();
         if !request.cookies.is_empty() {
-            return Err(EngineError::Internal(
-                "cookie handoff is not available until the browser integration lands".to_owned(),
-            ));
+            let cookie_header = request
+                .cookies
+                .iter()
+                .map(|(name, value)| format!("{name}={value}"))
+                .collect::<Vec<_>>()
+                .join("; ");
+            HeaderValue::from_str(&cookie_header)
+                .map_err(|_| EngineError::InvalidHeader("cookie".to_owned()))?;
+            ephemeral.push(("cookie".to_owned(), cookie_header));
+        }
+        for (name, value) in &request.ephemeral_headers {
+            HeaderName::from_bytes(name.as_bytes())
+                .map_err(|_| EngineError::InvalidHeader(name.clone()))?;
+            HeaderValue::from_str(value).map_err(|_| EngineError::InvalidHeader(name.clone()))?;
+            ephemeral.push((name.clone(), value.clone()));
         }
 
         let mut headers = Vec::with_capacity(request.headers.len());
@@ -250,6 +267,10 @@ impl Engine {
             },
         )?;
 
+        if !ephemeral.is_empty() {
+            self.ephemeral_headers.insert(id, ephemeral);
+        }
+
         Ok(id)
     }
 
@@ -313,6 +334,7 @@ impl Engine {
             let _ = std::fs::remove_file(temp);
         }
         downloads::delete(self.store.connection(), id)?;
+        self.ephemeral_headers.remove(&id);
         Ok(())
     }
 
@@ -406,7 +428,17 @@ impl Engine {
         if !matches!(url.scheme(), "http" | "https") {
             return Err(EngineError::UnsupportedScheme(url.scheme().to_owned()));
         }
-        let headers = request_headers(&record);
+        let mut headers = request_headers(&record);
+        if let Some(extra) = self.ephemeral_headers.get(&id) {
+            for (name, value) in extra {
+                if let (Ok(name), Ok(value)) = (
+                    HeaderName::from_bytes(name.as_bytes()),
+                    HeaderValue::from_str(value),
+                ) {
+                    headers.insert(name, value);
+                }
+            }
+        }
 
         let probe =
             probe_with_retry(&self.client, &self.config.retry, &url, &headers, cancel).await?;

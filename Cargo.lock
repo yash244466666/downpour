@@ -1133,6 +1133,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "downpour-core",
+ "downpour-ipc",
  "downpour-store",
  "downpour-types",
  "serde",
@@ -1169,9 +1170,11 @@ name = "downpour-ipc"
 version = "0.1.0"
 dependencies = [
  "downpour-types",
+ "getrandom 0.3.4",
  "interprocess",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "tracing",

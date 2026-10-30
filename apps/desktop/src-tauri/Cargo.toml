@@ -15,6 +15,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 downpour-core = { path = "../../../crates/downpour-core" }
+downpour-ipc = { path = "../../../crates/downpour-ipc" }
 downpour-store = { path = "../../../crates/downpour-store" }
 downpour-types = { path = "../../../crates/downpour-types" }
 chrono.workspace = true

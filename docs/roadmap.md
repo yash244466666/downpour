@@ -9,8 +9,8 @@ Status as of 2026-10-31.
 | **M2** | Multi-connection transfers, dynamic segmentation, throttle, retries, kill-9 crash tests | ✅ complete |
 | **M3** | Full desktop UI wired to the engine: table, settings, tray, notifications | ✅ complete |
 | **M4** | Queue, priorities, category filters, scheduler, autostart, single-instance | ✅ complete |
-| **M5** | IPC server/client, native-messaging host, Chromium/Edge extension takeover | ⏳ next |
-| **M6** | yt-dlp integration, media detection UI, HLS fallback | ⬜ |
+| **M5** | IPC server/client, native-messaging host, Chromium/Edge extension takeover | ✅ complete |
+| **M6** | yt-dlp integration, media detection UI, HLS fallback | ⏳ next |
 | **M7** | Site grabber + batch import/expansion | ⬜ |
 | **M8** | Packaging: NSIS per-user, universal DMG, AppImage/deb/rpm; signing/notarization; release CI | ⬜ |
 | **M9** | Hardening: accessibility, i18n, `downpour doctor`, docs | ⬜ |
@@ -80,14 +80,26 @@ Concurrency across downloads is **not** part of M2; it lands with the queue.
 - [ ] Category path rules (per-category folders) — filters shipped; rules are
       future work.
 
-## Next: M5 acceptance
+## Definition of done for M5
 
-- Local IPC server and client with a per-start token and peer checks.
-- `downpour --register-browsers` writes native-messaging manifests.
-- The native host forwards browser requests to the engine.
-- A Chromium/Edge extension takes over downloads and hands over cookies,
-  referer, and user agent.
-- An end-to-end browser download reaches the engine and completes.
+- [x] Local IPC server and client with a per-start token (0600 token file).
+- [x] `downpour register-browsers` writes Chromium/Edge/Brave manifests with a
+      pinned extension ID.
+- [x] The native host validates browser argv and forwards add/list/pause/
+      resume/cancel/remove to the engine, auto-launching the app if needed.
+- [x] A Chromium/Edge MV3 extension takes over downloads and hands over
+      cookies, referer, and user agent; blob:/data: URLs are left alone.
+- [x] End-to-end verified: native host → IPC → engine add/list completed an
+      8 MiB download; cookies were not persisted to SQLite.
+- [ ] Firefox/Safari extensions — not shipped.
+
+## Next: M6 acceptance
+
+- HLS manifests are detected from the extension and classified.
+- yt-dlp is detected (system install first), configured, and can be run with
+  cookie handoff and process-tree cancellation.
+- An HLS fallback downloads a stream with quality selection.
+- Media downloads are visible in the dashboard with title/quality metadata.
 
 ## Lean MVP cut line
 

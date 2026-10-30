@@ -9,13 +9,14 @@
 Ship Downpour milestone by milestone. Each milestone must leave the repository
 gate-clean and honest about what works.
 
-- **Current:** M0 complete (2026-10-30). Scaffold, schema, planner, filename
-  safety, IPC types, testkit, dashboard preview, CI, docs.
-- **Next:** M1 — probe, single-stream transfer, SQLite journal/resume, pause,
-  CLI. Acceptance criteria are in `docs/roadmap.md`.
-- **Not implemented:** transfer engine, IPC server, browser extension, media
-  pipeline, crawler, packaging. Do not claim otherwise in code, docs, commits,
-  or chat.
+- **Current:** M1 complete (2026-10-30). Probe, single-stream transfer, SQLite
+  journal/resume, pause, finalize, CLI, and the extended fault-injection server.
+- **Next:** M2 — multi-connection transfers, work-stealing, throttling,
+  per-segment retries, `kill -9` crash tests. Acceptance criteria are in
+  `docs/roadmap.md`.
+- **Not implemented:** multi-connection transfer, IPC server, browser extension,
+  media pipeline, crawler, packaging. Do not claim otherwise in code, docs,
+  commits, or chat.
 
 ## 1. Bootstrap (every session)
 
@@ -227,7 +228,9 @@ Stop and ask in chat when:
 1. Claiming an unimplemented feature works because the UI mock shows it.
 2. Giving each segment its own cloned file handle.
 3. Checking `Accept-Ranges` instead of the actual `206` response.
-4. Forgetting `Accept-Encoding: identity` on probes and range requests.
+4. Forgetting `Accept-Encoding: identity` on probes and range requests, or
+   retrying a no-range transfer at the old offset instead of truncating and
+   restarting from zero.
 5. Committing offsets to SQLite before `sync_data()`.
 6. Emitting a progress event per chunk instead of coalescing.
 7. Storing cookies in plaintext or logging request headers.

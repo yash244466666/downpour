@@ -10,6 +10,7 @@ description = "Fault-injecting HTTP test server for Downpour"
 axum.workspace = true
 bytes.workspace = true
 downpour-types = { path = "../downpour-types" }
+futures-util.workspace = true
 http-body-util.workspace = true
 serde.workspace = true
 serde_json.workspace = true

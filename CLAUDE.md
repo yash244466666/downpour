@@ -1,7 +1,7 @@
 # CLAUDE.md — Downpour
 
 > Project context for Claude Code. Read this before changing anything.
-> Last updated: 2026-10-30 (M0 complete).
+> Last updated: 2026-10-30 (M1 complete).
 
 ## 1. What this is
 
@@ -10,17 +10,19 @@ manager in the IDM class: 1–32 parallel connections per file, crash-safe resum
 queues, scheduler, bandwidth throttling, browser download take-over, media
 grabbing (HLS/DASH/yt-dlp), and a site grabber — wrapped in a modern dashboard.
 
-**Current status: M0 complete.** The repository is a scaffold plus a verified UI
-preview. Do not describe unfinished features as working.
+**Current status: M1 complete.** Single-stream downloads work end to end; the
+dashboard still shows mock data. Do not describe unfinished features as working.
 
 | Area | State |
 |---|---|
-| Rust workspace | Compiles; 23 tests pass; clippy `-D warnings` clean |
+| Rust workspace | Compiles; 77 tests pass; clippy `-D warnings` clean |
 | Shared types / IPC contract | DTOs, error codes, framing, handshake types |
-| SQLite schema + migrations | Complete initial schema, WAL, STRICT tables |
-| Segment planner / filename safety | Implemented with unit + proptest coverage |
-| Transfer engine | **Not implemented** — no probe, no HTTP transfer, no resume yet |
-| IPC server/client | **Not implemented** — protocol types only |
+| SQLite schema + migrations | Initial schema, WAL, STRICT tables, download queries |
+| Segment planner / filename safety | Planner exists but drives M2; filename hardening live |
+| Transfer engine | **Single-stream** probe/transfer/resume/pause/finalize implemented |
+| Multi-connection transfer | **Not implemented** — M2 (planner not wired) |
+| IPC server/client | **Not implemented** — protocol types only (M5) |
+| CLI | `add`, `get`, `run`, `list`, `info`, `pause`, `cancel`, `version` work |
 | Desktop UI | Dashboard with **mock data**; `engine_info` Tauri command works |
 | Browser extension / native host | **Not implemented** — stdio framing only |
 | Media / grabber | Classification + batch-pattern expansion only |
@@ -78,14 +80,14 @@ downpour/
 ├─ crates/
 │  ├─ downpour-types/          serde DTOs, ErrorCode, PROTOCOL_VERSION
 │  ├─ downpour-store/          SQLite open/config/migrations
-│  ├─ downpour-core/           engine (planner, filename; transfer TODO)
+│  ├─ downpour-core/           engine (probe, transfer, writer, resume, planner)
 │  ├─ downpour-ipc/            JSON-line protocol + framing
 │  ├─ downpour-media/          media classification, yt-dlp/ffmpeg detection
 │  ├─ downpour-grabber/        batch pattern expansion (crawler TODO)
 │  ├─ downpour-nm-host/        browser native-messaging binary (framing only)
 │  └─ downpour-testkit/        fault-injecting range server
 ├─ apps/
-│  ├─ cli/                     `downpour` CLI (info works; add/list TODO)
+│  ├─ cli/                     `downpour` CLI (add/get/run/list/info/pause/cancel)
 │  └─ desktop/                 Tauri 2 app + React dashboard
 │     ├─ src/                  React 19 + Vite + Tailwind sources
 │     └─ src-tauri/            Rust shell, tauri.conf.json, capabilities
@@ -100,6 +102,11 @@ Key files:
 |---|---|
 | Protocol DTOs | `crates/downpour-types/src/lib.rs` |
 | SQLite schema | `crates/downpour-store/src/migrations.rs` |
+| Download queries | `crates/downpour-store/src/downloads.rs` |
+| Probe + filename parsing | `crates/downpour-core/src/probe.rs` |
+| Engine orchestration | `crates/downpour-core/src/engine.rs` |
+| Writer thread | `crates/downpour-core/src/writer.rs` |
+| Cancellation | `crates/downpour-core/src/cancel.rs` |
 | Segment math | `crates/downpour-core/src/planner.rs` |
 | Filename safety | `crates/downpour-core/src/filename.rs` |
 | IPC framing | `crates/downpour-ipc/src/protocol.rs` |
@@ -126,10 +133,17 @@ pnpm --dir apps/desktop typecheck
 pnpm --dir apps/desktop build
 pnpm tauri dev                               # real Tauri window (needs DISPLAY)
 
+# CLI (engine runs in-process in M1)
+cargo run -p downpour-cli -- version
+cargo run -p downpour-cli -- add <URL> -n name.ext
+cargo run -p downpour-cli -- run <ID>         # Ctrl-C pauses, rerun resumes
+cargo run -p downpour-cli -- list
+cargo run -p downpour-cli -- info <ID>
+cargo run -p downpour-cli -- cancel <ID>      # only when not running
+
 # Useful
 cargo check -p downpour-desktop              # Tauri shell only
-cargo run -p downpour-cli -- info            # CLI version/protocol
-sqlite3 <db> .schema                         # inspect schema once engine lands
+sqlite3 <db> .schema                         # inspect the schema
 ```
 
 **Expected local timings:** first `cargo check -p downpour-desktop` ~1–2 min;
@@ -152,6 +166,7 @@ Pipeline: **probe → plan → transfer → checkpoint → finalize**.
 - Probe: `GET Range: bytes=0-0`, `Accept-Encoding: identity`, manual redirects
   (max 10), capture strong ETag / Last-Modified, final URL, filename.
 - Plan: connections `clamp(1,32)`; one stream for no-range/unknown/<2 MiB.
+  M1 always runs a single stream; the planner drives M2.
 - Transfer: one network task per segment → bounded channel → single writer
   thread → positional writes.
 - Checkpoint: fsync file, then DB transaction; reconcile on startup with
@@ -232,12 +247,15 @@ pnpm --dir apps/desktop build
 ```
 
 - Engine correctness is defined by `downpour-testkit`, not live internet tests:
-  `/ok/{size}`, `/no-range/{size}` today; add `/drop`, `/etag-change`, `/429`,
-  `/redirect`, `/truncated`, `/gzip-range`, `/disposition` as M1 proceeds.
+  `/ok`, `/no-range`, `/versioned`, `/flip-after-range`, `/drop`,
+  `/always-truncated`, `/retry-429`, `/disposition`, `/redirect`, `/auth`
+  exist today; add `/gzip-range`, `/slow`, and a TCP cut proxy as needed.
 - Use `proptest` for planner tiling invariants.
 - Crash tests use a spawned CLI process + SIGKILL (`taskkill /F` on Windows)
   and compare SHA-256 against the source.
 - UI tests currently stop at typecheck/build; Vitest + Playwright land with M3.
+- Current total: **77 tests** (28 core, 17 engine integration, 6 store, 6 testkit,
+  4 types, plus IPC/media/grabber/nm-host units).
 - Never add a test that downloads from the public internet.
 
 ## 11. Milestones
@@ -247,8 +265,8 @@ Full detail in `docs/roadmap.md`.
 | # | Scope | State |
 |---|---|---|
 | M0 | Workspace, schema, planner, filename, IPC types, testkit, dashboard, CI, docs | ✅ |
-| M1 | Probe, single-stream transfer, SQLite journal/resume, pause, CLI | next |
-| M2 | Multi-connection, work-stealing, throttle, retries, kill-9 tests | |
+| M1 | Probe, single-stream transfer, SQLite journal/resume, pause, CLI | ✅ |
+| M2 | Multi-connection, work-stealing, throttle, retries, kill-9 tests | next |
 | M3 | Full UI wired to engine, tray, notifications, settings | |
 | M4 | Queue, scheduler, categories, autostart, single-instance, updater | |
 | M5 | IPC server/client, native host, Chromium/Edge extension | |
@@ -257,9 +275,13 @@ Full detail in `docs/roadmap.md`.
 | M8 | Packaging, signing, notarization, release CI | |
 | M9 | Accessibility, i18n, diagnostics, docs | |
 
-**M1 exit criteria:** a real file downloads over one stream; state persists;
-kill the process and resume without re-downloading committed bytes; CLI
-pause/resume; fault tests pass; output SHA-256 matches.
+**M1 exit criteria (met):** a real file downloads over one stream; state
+persists; kill the process and resume without re-downloading committed bytes;
+CLI pause/resume; fault tests pass; output SHA-256 matches.
+
+**M2 exit criteria:** range-capable files split across up to 32 connections;
+work-stealing; byte-rate throttling; per-segment retries; `kill -9` at random
+offsets leaves no corruption after resume.
 
 ## 12. Branching and releases
 
@@ -295,6 +317,13 @@ the grabber:
 - Tauri capability schema (`apps/desktop/src-tauri/gen/schemas/...`) is generated
   at build time and gitignored; editors may show it as missing until first build.
 - `pnpm tauri dev` requires a display; CI runs `cargo check/test` only.
+- M1 runs **one download at a time per `Engine`**. Do not add ad-hoc concurrency
+  in the CLI; that is the queue's job (M4).
+- Ctrl-C in the CLI pauses (commits progress, keeps the `.downpour-part`).
+  `downpour pause <id>` only works on a download no live process owns; the
+  shared daemon arrives with IPC in M5.
+- A no-range download always restarts from byte zero; never write a restarted
+  body at a non-zero offset.
 - Linux WebKitGTK rendering glitches: try
   `WEBKIT_DISABLE_DMABUF_RENDERER=1` or `WEBKIT_DISABLE_COMPOSITING_MODE=1`.
 - Changing `tauri.conf.json` or capabilities triggers a Rust rebuild.

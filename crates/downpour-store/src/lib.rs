@@ -4,6 +4,7 @@
 //! async SQL adds complexity without concurrency. One writer connection lives on
 //! a dedicated thread (see the engine); readers may use a second connection.
 
+pub mod downloads;
 mod migrations;
 
 use std::path::Path;
@@ -21,6 +22,8 @@ pub enum StoreError {
     Migration(#[from] rusqlite_migration::Error),
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
+    #[error("invalid stored data: {0}")]
+    Data(String),
 }
 
 /// A migration-checked SQLite connection.

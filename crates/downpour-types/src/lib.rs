@@ -36,6 +36,14 @@ impl std::fmt::Display for DownloadId {
     }
 }
 
+impl std::str::FromStr for DownloadId {
+    type Err = uuid::Error;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        Ok(Self(Uuid::parse_str(value)?))
+    }
+}
+
 /// Lifecycle state of a download.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -59,6 +67,45 @@ impl DownloadState {
     #[must_use]
     pub fn is_running(self) -> bool {
         matches!(self, Self::Probing | Self::Downloading | Self::Finalizing)
+    }
+
+    /// Stable database / wire spelling.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Queued => "queued",
+            Self::Probing => "probing",
+            Self::Downloading => "downloading",
+            Self::Paused => "paused",
+            Self::Finalizing => "finalizing",
+            Self::Completed => "completed",
+            Self::Failed => "failed",
+            Self::Canceled => "canceled",
+        }
+    }
+}
+
+impl std::fmt::Display for DownloadState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl std::str::FromStr for DownloadState {
+    type Err = UnknownEnumValue;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "queued" => Ok(Self::Queued),
+            "probing" => Ok(Self::Probing),
+            "downloading" => Ok(Self::Downloading),
+            "paused" => Ok(Self::Paused),
+            "finalizing" => Ok(Self::Finalizing),
+            "completed" => Ok(Self::Completed),
+            "failed" => Ok(Self::Failed),
+            "canceled" => Ok(Self::Canceled),
+            other => Err(UnknownEnumValue::new("download state", other)),
+        }
     }
 }
 
@@ -149,6 +196,59 @@ pub enum DownloadSource {
     Clipboard,
     Batch,
     Api,
+}
+
+impl DownloadSource {
+    /// Stable database / wire spelling.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ui => "ui",
+            Self::BrowserExtension => "browser_extension",
+            Self::Clipboard => "clipboard",
+            Self::Batch => "batch",
+            Self::Api => "api",
+        }
+    }
+}
+
+impl std::fmt::Display for DownloadSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl std::str::FromStr for DownloadSource {
+    type Err = UnknownEnumValue;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "ui" => Ok(Self::Ui),
+            "browser_extension" => Ok(Self::BrowserExtension),
+            "clipboard" => Ok(Self::Clipboard),
+            "batch" => Ok(Self::Batch),
+            "api" => Ok(Self::Api),
+            other => Err(UnknownEnumValue::new("download source", other)),
+        }
+    }
+}
+
+/// Error returned when a database or wire value names an unknown enum variant.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("unknown {kind}: {value}")]
+pub struct UnknownEnumValue {
+    kind: &'static str,
+    value: String,
+}
+
+impl UnknownEnumValue {
+    #[must_use]
+    pub fn new(kind: &'static str, value: impl Into<String>) -> Self {
+        Self {
+            kind,
+            value: value.into(),
+        }
+    }
 }
 
 /// Request to enqueue a new download.
@@ -311,5 +411,36 @@ mod tests {
         let value = serde_json::to_value(ErrorCode::Http { status: 404 }).unwrap();
         assert_eq!(value["code"], "http");
         assert_eq!(value["status"], 404);
+    }
+
+    #[test]
+    fn states_round_trip_through_strings() {
+        for state in [
+            DownloadState::Queued,
+            DownloadState::Probing,
+            DownloadState::Downloading,
+            DownloadState::Paused,
+            DownloadState::Finalizing,
+            DownloadState::Completed,
+            DownloadState::Failed,
+            DownloadState::Canceled,
+        ] {
+            assert_eq!(state.as_str().parse::<DownloadState>().unwrap(), state);
+        }
+        assert!("bogus".parse::<DownloadState>().is_err());
+    }
+
+    #[test]
+    fn sources_round_trip_through_strings() {
+        for source in [
+            DownloadSource::Ui,
+            DownloadSource::BrowserExtension,
+            DownloadSource::Clipboard,
+            DownloadSource::Batch,
+            DownloadSource::Api,
+        ] {
+            assert_eq!(source.as_str().parse::<DownloadSource>().unwrap(), source);
+        }
+        assert!("bogus".parse::<DownloadSource>().is_err());
     }
 }

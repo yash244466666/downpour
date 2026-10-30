@@ -12,10 +12,11 @@ Downpour brings IDM-class downloading — segmented transfers, crash-safe resume
 queues, browser take-over, and media grabbing — to all three desktop platforms
 with an open-source implementation and a modern interface.
 
-> **Status: M0 (scaffold).** The Rust workspace, SQLite schema, segment planner,
-> filename hardening, IPC contract, fault-injection test server, and Tauri 2
-> dashboard preview are in place. The transfer engine, browser extension, media
-> pipeline, and site grabber are **not implemented yet**. See the
+> **Status: M1 (single-stream engine).** Downloads work end to end — probe,
+> segmented-file-safe writer thread, crash-safe SQLite checkpoints, resume,
+> pause, SHA-256 verification — driven by the CLI. The desktop dashboard still
+> shows **mock data**; multi-connection transfers, browser integration, media
+> grabbing, and the site grabber are **not implemented yet**. See the
 > [roadmap](docs/roadmap.md).
 
 ## Why Downpour
@@ -32,18 +33,25 @@ traditionally Windows-only, closed-source, and visually dated. Downpour is:
 
 ## Features
 
-### Working today (M0)
+### Working today (M1)
 
+- **Real downloads over a single stream** with probe-based size/range/ETag
+  detection, `.downpour-part` temp files, and atomic rename.
+- **Crash-safe resume**: durable checkpoints after `fsync`, restart recovery,
+  validator comparison, and restart-from-zero when content changed.
+- **Pause/resume/cancel** from the CLI; SIGINT pauses safely.
+- **SHA-256** recorded for every completed download and verified when a
+  checksum is supplied.
 - Rust workspace with shared DTOs, SQLite schema/migrations, segment planner,
   filename sanitizer, IPC framing, and a fault-injecting test server.
-- Tauri 2 desktop shell with a React 19 dashboard preview.
+- Tauri 2 desktop shell with a React 19 dashboard preview (mock data).
 - Dark/light themes, filters, search, add-URL dialog, engine-info bridge.
 - CI for Linux, Windows, and macOS.
 
 ### Planned for v1
 
-- 1–32 parallel connections per file, dynamic re-segmentation, pause/resume.
-- Crash-safe resume across app kills and power loss.
+- 1–32 parallel connections per file, dynamic re-segmentation, work-stealing.
+- Queue-level concurrency, bandwidth throttling, and per-segment retries.
 - Queue with global/per-host limits, priorities, categories, scheduler.
 - Global and per-download bandwidth throttling.
 - Chromium + Firefox extension: download take-over, context menu, media
@@ -151,6 +159,22 @@ pnpm --dir apps/desktop dev
 The first Tauri build takes several minutes (debuginfo linking); later runs are
 seconds.
 
+### Download something from the CLI
+
+```bash
+cargo build -p downpour-cli
+./target/debug/downpour add https://example.com/big.zip
+./target/debug/downpour run          # Ctrl-C pauses; rerun to resume
+./target/debug/downpour list
+./target/debug/downpour info <id>
+./target/debug/downpour cancel <id>  # only when no process is downloading it
+```
+
+`--db <path>` and `--dir <path>` (or `DOWNPOUR_DB` / `DOWNPOUR_DIR`) override
+the per-user database and download directory. `downpour get <url>` adds and
+starts in one step. The engine runs in-process in M1; the shared daemon and IPC
+commands come with M5.
+
 ### Build installers
 
 ```bash
@@ -198,8 +222,10 @@ with deterministic byte patterns — no public-internet tests. Crash tests kill 
 CLI process at random offsets and compare SHA-256 against the source once the
 engine lands.
 
-Current state: **23 Rust tests pass**, clippy is warning-free, and the frontend
-typechecks and builds.
+Current state: **77 Rust tests pass**, clippy is warning-free, and the frontend
+typechecks and builds. Engine tests cover byte-exact transfers, pause/resume,
+engine restarts, ETag/content changes, `429`, dropped connections, permanent
+truncation, redirects, auth failures, and traversal filenames.
 
 ## Branching and releases
 
@@ -216,8 +242,8 @@ typechecks and builds.
 | # | Milestone | State |
 |---|---|---|
 | M0 | Workspace, schema, planner, filename safety, IPC types, testkit, dashboard, CI, docs | ✅ |
-| M1 | Probe, single-stream transfer, SQLite journal/resume, pause, CLI | next |
-| M2 | Multi-connection, work-stealing, throttling, retries, crash tests | |
+| M1 | Probe, single-stream transfer, SQLite journal/resume, pause, CLI | ✅ |
+| M2 | Multi-connection, work-stealing, throttling, retries, crash tests | next |
 | M3 | Full UI wired to engine, tray, notifications, settings | |
 | M4 | Queue, scheduler, categories, autostart, single-instance, updater | |
 | M5 | IPC server/client, native host, Chromium/Edge extension | |

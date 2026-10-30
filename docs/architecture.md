@@ -47,7 +47,8 @@ version can move it into a daemon without rewriting the transfer code.
    single stream. Capture strong ETag / Last-Modified and the post-redirect URL.
 2. **Plan** — clamp connections to 1–32; one segment for no-range, unknown-size,
    or sub-2 MiB files; otherwise split into at most `connections` segments that
-   exactly tile the file.
+   exactly tile the file. *Implemented as single-stream in M1; the segmented
+   planner ships in M2.*
 3. **Transfer** — one network task per segment; a bounded channel feeds a single
    writer thread that owns the only file handle and performs positional writes
    (`write_all_at` / `seek_write`). Do not clone handles: duplicated handles
@@ -57,14 +58,29 @@ version can move it into a daemon without rewriting the transfer code.
 5. **Finalize** — fsync, length check, optional SHA-256, atomic rename, fsync
    the parent directory on Unix, then mark complete.
 
+### Implemented in M1
+
+`probe`, the single writer thread, checkpointing, resume, pause, finalize, and
+the CLI are live in `downpour-core` / `apps/cli`. One `Engine` drives one
+download at a time; concurrency across downloads arrives with the queue (M4).
+Every run re-probes, so a short-lived signed URL is refreshed before each
+resume.
+
 ### Crash safety
 
 - `.downpour-part` lives beside the destination for an atomic same-filesystem
   rename.
-- Startup moves `downloading`/`finalizing` rows to `paused`, clamps offsets to
-  the actual file length, and re-probes with `If-Range`. A changed validator
-  restarts the transfer.
-- Orphan part files go to a repair list; nothing is silently deleted.
+- Startup moves `downloading`/`probing`/`finalizing` rows to `paused`. On resume
+  the temp file is truncated to the last committed offset, so uncommitted tail
+  bytes from a crash are never trusted.
+- The probe result is compared with the stored validator before transferring.
+  A changed ETag/Last-Modified discards committed bytes and restarts from zero;
+  a `200` response to a range request (server changed or ignored `If-Range`)
+  truncates the temp file and restarts the same way, capped at two restarts.
+- A no-range server is always re-fetched from byte zero; the engine never fakes
+  segments or writes a restarted body at the old offset.
+- Orphan part files go to a repair list; nothing is silently deleted except an
+  empty temp left under a superseded name.
 - SQLite uses WAL + `synchronous=NORMAL`: process crashes are safe; power loss
   can lose the last checkpoint, which only causes re-downloading.
 

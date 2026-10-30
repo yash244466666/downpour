@@ -10,6 +10,8 @@ description = "SQLite persistence, schema, and migrations for Downpour"
 downpour-types = { path = "../downpour-types" }
 rusqlite.workspace = true
 rusqlite_migration.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 uuid.workspace = true

@@ -13,7 +13,8 @@ path = "src/main.rs"
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
-downpour-ipc = { path = "../../crates/downpour-ipc" }
+downpour-core = { path = "../../crates/downpour-core" }
+downpour-store = { path = "../../crates/downpour-store" }
 downpour-types = { path = "../../crates/downpour-types" }
 serde_json.workspace = true
 tokio.workspace = true

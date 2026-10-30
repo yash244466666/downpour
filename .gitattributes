@@ -1,0 +1,6 @@
+# Keep sources LF everywhere: Windows runners run `cargo fmt --check`.
+* text=auto eol=lf
+
+*.png binary
+*.ico binary
+*.icns binary

@@ -52,7 +52,9 @@ export function Sidebar({
   counts,
   categoryCounts,
   filter,
+  category,
   onFilter,
+  onCategory,
   totalSpeed,
   preview,
   onOpenFolder,
@@ -60,7 +62,9 @@ export function Sidebar({
   counts: Counts;
   categoryCounts: Partial<Record<DownloadKind, number>>;
   filter: Filter;
+  category: DownloadKind | null;
   onFilter: (filter: Filter) => void;
+  onCategory: (kind: DownloadKind | null) => void;
   totalSpeed: number;
   preview: boolean;
   onOpenFolder: () => void;
@@ -115,22 +119,31 @@ export function Sidebar({
 
         <SectionLabel className="mt-6">Categories</SectionLabel>
         <div className="mt-1 space-y-0.5">
-          {CATEGORIES.map((category) => (
-            <button
-              key={category.label}
-              type="button"
-              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] text-muted transition-colors hover:bg-surface-2 hover:text-fg"
-              title="Category filtering arrives in a later milestone"
-            >
-              <category.icon
-                className={cn("h-4 w-4 shrink-0", category.className)}
-              />
-              <span className="truncate">{category.label}</span>
-              <span className="ml-auto rounded-md bg-surface-2 px-1.5 py-0.5 text-[10px] tabular-nums">
-                {categoryCounts[category.kind] ?? 0}
-              </span>
-            </button>
-          ))}
+          {CATEGORIES.map((item) => {
+            const isActive = category === item.kind;
+            return (
+              <button
+                key={item.label}
+                type="button"
+                aria-pressed={isActive}
+                onClick={() => onCategory(isActive ? null : item.kind)}
+                className={cn(
+                  "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] transition-colors",
+                  isActive
+                    ? "bg-accent-soft font-medium text-accent"
+                    : "text-muted hover:bg-surface-2 hover:text-fg",
+                )}
+              >
+                <item.icon
+                  className={cn("h-4 w-4 shrink-0", item.className)}
+                />
+                <span className="truncate">{item.label}</span>
+                <span className="ml-auto rounded-md bg-surface-2 px-1.5 py-0.5 text-[10px] tabular-nums">
+                  {categoryCounts[item.kind] ?? 0}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </nav>
 

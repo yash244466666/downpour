@@ -6,18 +6,19 @@
 
 ![Downpour dashboard](docs/assets/dashboard.png)
 
-<sub>M3 dashboard — live downloads from the embedded engine.</sub>
+<sub>M4 dashboard — live queue with concurrency limits and priorities.</sub>
 
 Downpour brings IDM-class downloading — segmented transfers, crash-safe resume,
 queues, browser take-over, and media grabbing — to all three desktop platforms
 with an open-source implementation and a modern interface.
 
-> **Status: M3 (live desktop UI).** Downloads work end to end — probe,
+> **Status: M4 (queue and scheduling).** Downloads work end to end — probe,
 > 1–32 parallel connections over a dynamic segment queue, crash-safe SQLite
-> checkpoints, resume, pause, throttling, SHA-256 verification — and the
-> dashboard is wired to the engine (add, pause, resume, cancel, settings,
-> tray, notifications). Browser integration, media grabbing, and the site
-> grabber are **not implemented yet**. See the [roadmap](docs/roadmap.md).
+> checkpoints, resume, pause, throttling, SHA-256 verification — with a live
+> dashboard, a persistent queue (concurrency and per-host limits, priorities),
+> category filters, a start/stop schedule, autostart, and single-instance.
+> Browser integration, media grabbing, and the site grabber are **not
+> implemented yet**. See the [roadmap](docs/roadmap.md).
 
 ## Why Downpour
 
@@ -33,11 +34,14 @@ traditionally Windows-only, closed-source, and visually dated. Downpour is:
 
 ## Features
 
-### Working today (M3)
+### Working today (M4)
 
+- **Persistent queue** with concurrency and per-host limits, priorities,
+  Start all / Pause all, and automatic scheduling within a start/stop window.
 - **Live desktop dashboard** wired to the engine: add, pause, resume, cancel,
-  remove, reveal in folder, and persistent settings.
-- Tray icon, close-to-tray, and a completion notification.
+  remove, reveal in folder, category filters, and persistent settings.
+- Tray icon, close-to-tray, completion notifications, autostart, and
+  single-instance behavior.
 - **Real downloads over 1–32 connections** with probe-based size/range/ETag
   detection, `.downpour-part` temp files, and atomic rename.
 - **Dynamic segmentation**: segments are finer than workers, so a fast worker
@@ -230,7 +234,7 @@ with deterministic byte patterns — no public-internet tests. Crash tests kill 
 CLI process at random offsets and compare SHA-256 against the source once the
 engine lands.
 
-Current state: **92 Rust tests and 12 frontend unit tests pass**, clippy is
+Current state: **97 Rust tests and 20 frontend unit tests pass**, clippy is
 warning-free, and the frontend typechecks and builds. Engine tests cover byte-exact transfers, segmented
 concurrency, throttling, pause/resume, engine restarts, a real SIGKILL resume,
 ETag/content changes, `429`, dropped connections, permanent truncation,
@@ -254,7 +258,8 @@ redirects, auth failures, and traversal filenames.
 | M1 | Probe, single-stream transfer, SQLite journal/resume, pause, CLI | ✅ |
 | M2 | Multi-connection, dynamic segmentation, throttling, retries, crash tests | ✅ |
 | M3 | Full UI wired to engine, tray, notifications, settings | ✅ |
-| M4 | Queue, scheduler, categories, autostart, single-instance, updater | next |
+| M4 | Queue, scheduler, categories, autostart, single-instance | ✅ |
+| M5 | IPC server/client, native host, Chromium/Edge extension | next |
 | M5 | IPC server/client, native host, Chromium/Edge extension | |
 | M6 | yt-dlp, media detection, HLS fallback | |
 | M7 | Site grabber, batch import | |

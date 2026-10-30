@@ -265,6 +265,27 @@ impl Engine {
         Ok(downloads::list_runnable(self.store.connection())?)
     }
 
+    /// Put a paused download back in the queue.
+    pub fn requeue(&mut self, id: DownloadId) -> EngineResult<()> {
+        let record = self.record(id)?;
+        match record.state {
+            DownloadState::Paused | DownloadState::Queued => {
+                downloads::set_state(self.store.connection(), id, DownloadState::Queued)?;
+                Ok(())
+            }
+            _ => Err(EngineError::Internal(
+                "only paused downloads can be requeued".to_owned(),
+            )),
+        }
+    }
+
+    /// Move a download in the queue (higher runs first).
+    pub fn set_priority(&mut self, id: DownloadId, priority: i64) -> EngineResult<()> {
+        let _ = self.record(id)?;
+        downloads::set_priority(self.store.connection(), id, priority)?;
+        Ok(())
+    }
+
     /// Read a setting as JSON.
     pub fn setting(&self, key: &str) -> EngineResult<Option<serde_json::Value>> {
         let raw = downloads::get_setting(self.store.connection(), key)?;

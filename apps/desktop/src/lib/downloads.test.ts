@@ -22,6 +22,7 @@ const base: EngineDownload = {
   finalPath: "/home/user/Downloads/report.pdf",
   createdAtMs: 1_700_000_000_000,
   completedAtMs: null,
+  priority: 0,
 };
 
 describe("statusFromState", () => {
@@ -57,6 +58,7 @@ describe("rowFromEngine", () => {
     expect(row.eta).toBe(6);
     expect(row.added).toBe("2 min ago");
     expect(row.finalPath).toBe("/home/user/Downloads/report.pdf");
+    expect(row.priority).toBe(0);
   });
 
   it("uses the completion time for completed rows", () => {

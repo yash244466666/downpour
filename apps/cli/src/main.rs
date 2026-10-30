@@ -116,18 +116,18 @@ async fn run(cli: Cli) -> Result<()> {
         Command::Pause { id } => pause(&db, &dir, &id),
         Command::Cancel { id } => cancel(&db, &dir, &id),
         Command::Add(args) => {
-            let mut engine = open_engine(&db, &dir)?;
+            let mut engine = open_engine(&db, &dir, false)?;
             let id = queue(&mut engine, args)?;
             println!("queued {id}");
             Ok(())
         }
         Command::Get(args) => {
-            let mut engine = open_engine(&db, &dir)?;
+            let mut engine = open_engine(&db, &dir, true)?;
             let id = queue(&mut engine, args)?;
             run_downloads(&mut engine, Some(id), false).await
         }
         Command::Run { id, quiet } => {
-            let mut engine = open_engine(&db, &dir)?;
+            let mut engine = open_engine(&db, &dir, true)?;
             let id = match id {
                 Some(raw) => Some(parse_id(&raw)?),
                 None => None,
@@ -137,7 +137,9 @@ async fn run(cli: Cli) -> Result<()> {
     }
 }
 
-fn open_engine(db: &Option<PathBuf>, dir: &Option<PathBuf>) -> Result<Engine> {
+/// Open the engine. Only commands that will run transfers recover interrupted
+/// rows; listing or pausing must not flip a download owned by another process.
+fn open_engine(db: &Option<PathBuf>, dir: &Option<PathBuf>, recover: bool) -> Result<Engine> {
     let db = db
         .clone()
         .unwrap_or_else(downpour_core::paths::database_path);
@@ -149,7 +151,12 @@ fn open_engine(db: &Option<PathBuf>, dir: &Option<PathBuf>) -> Result<Engine> {
         default_dir,
         ..EngineConfig::default()
     };
-    Engine::open(db, config).context("open engine database")
+    let engine = if recover {
+        Engine::open(db, config)
+    } else {
+        Engine::open_without_recovery(db, config)
+    };
+    engine.context("open engine database")
 }
 
 fn queue(engine: &mut Engine, args: AddArgs) -> Result<DownloadId> {
@@ -258,7 +265,7 @@ async fn run_downloads(engine: &mut Engine, id: Option<DownloadId>, quiet: bool)
 }
 
 fn list(db: &Option<PathBuf>, dir: &Option<PathBuf>, json: bool, limit: usize) -> Result<()> {
-    let engine = open_engine(db, dir)?;
+    let engine = open_engine(db, dir, false)?;
     let records = engine.list(limit).context("list downloads")?;
 
     if json {
@@ -294,7 +301,7 @@ fn list(db: &Option<PathBuf>, dir: &Option<PathBuf>, json: bool, limit: usize) -
 }
 
 fn info(db: &Option<PathBuf>, dir: &Option<PathBuf>, raw_id: &str, json: bool) -> Result<()> {
-    let engine = open_engine(db, dir)?;
+    let engine = open_engine(db, dir, false)?;
     let id = parse_id(raw_id)?;
     let record = engine
         .get(id)
@@ -351,7 +358,7 @@ fn info(db: &Option<PathBuf>, dir: &Option<PathBuf>, raw_id: &str, json: bool) -
 }
 
 fn pause(db: &Option<PathBuf>, dir: &Option<PathBuf>, raw_id: &str) -> Result<()> {
-    let mut engine = open_engine(db, dir)?;
+    let mut engine = open_engine(db, dir, false)?;
     let id = parse_id(raw_id)?;
     engine.pause(id).context("pause download")?;
     println!("paused {id}");
@@ -359,7 +366,7 @@ fn pause(db: &Option<PathBuf>, dir: &Option<PathBuf>, raw_id: &str) -> Result<()
 }
 
 fn cancel(db: &Option<PathBuf>, dir: &Option<PathBuf>, raw_id: &str) -> Result<()> {
-    let mut engine = open_engine(db, dir)?;
+    let mut engine = open_engine(db, dir, false)?;
     let id = parse_id(raw_id)?;
     engine.cancel(id).context("cancel download")?;
     println!("canceled {id}");

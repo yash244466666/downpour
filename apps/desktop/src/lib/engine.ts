@@ -13,6 +13,13 @@ export interface Settings {
   connections: number;
   speedLimit: number;
   theme: string;
+  maxConcurrent: number;
+  maxPerHost: number;
+  scheduleEnabled: boolean;
+  scheduleStart: string;
+  scheduleEnd: string;
+  scheduleDays: number;
+  autostart: boolean;
 }
 
 export async function fetchEngineInfo(): Promise<EngineInfo | null> {
@@ -60,6 +67,18 @@ export async function getSettings(): Promise<Settings> {
 
 export async function setSettings(settings: Settings): Promise<void> {
   await invoke("set_settings", { settings });
+}
+
+export async function setPriority(id: string, priority: number): Promise<void> {
+  await invoke("set_priority", { id, priority });
+}
+
+export async function pauseAll(): Promise<void> {
+  await invoke("pause_all");
+}
+
+export async function startAll(): Promise<void> {
+  await invoke("start_all");
 }
 
 export async function revealPath(path: string): Promise<void> {

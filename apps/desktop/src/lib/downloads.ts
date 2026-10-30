@@ -33,6 +33,7 @@ export interface DownloadRow {
   finalPath?: string;
   error?: string;
   createdAtMs?: number;
+  priority?: number;
 }
 
 /** Wire shape returned by the Tauri `list_downloads` command. */
@@ -51,6 +52,7 @@ export interface EngineDownload {
   finalPath: string | null;
   createdAtMs: number;
   completedAtMs: number | null;
+  priority: number;
 }
 
 export function statusFromState(state: string): DownloadStatus {
@@ -123,5 +125,6 @@ export function rowFromEngine(
     finalPath: record.finalPath ?? undefined,
     error: record.error ?? undefined,
     createdAtMs: record.createdAtMs,
+    priority: record.priority,
   };
 }

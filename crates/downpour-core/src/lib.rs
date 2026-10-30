@@ -15,6 +15,7 @@ pub mod paths;
 pub mod planner;
 pub mod probe;
 pub mod ratelimit;
+pub mod schedule;
 mod segmented;
 pub mod writer;
 

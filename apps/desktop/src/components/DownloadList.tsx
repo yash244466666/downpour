@@ -2,6 +2,8 @@ import { ChevronDown, Inbox } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
 import {
   Archive,
+  ArrowDown,
+  ArrowUp,
   File,
   FileText,
   Film,
@@ -95,6 +97,9 @@ export function DownloadList({
   onCancel,
   onRemove,
   onReveal,
+  onPriority,
+  onStartAll,
+  onPauseAll,
 }: {
   downloads: DownloadRow[];
   total: number;
@@ -105,6 +110,9 @@ export function DownloadList({
   onCancel: (id: string) => void;
   onRemove: (id: string) => void;
   onReveal: (download: DownloadRow) => void;
+  onPriority: (id: string, delta: number) => void;
+  onStartAll: () => void;
+  onPauseAll: () => void;
 }) {
   return (
     <section className="mt-6 overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
@@ -143,6 +151,25 @@ export function DownloadList({
           ))}
         </div>
 
+        <div className="hidden items-center gap-1 sm:flex">
+          <button
+            type="button"
+            onClick={onStartAll}
+            className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1.5 text-[11px] text-muted transition-colors hover:text-fg"
+          >
+            <Play className="h-3.5 w-3.5" />
+            Start all
+          </button>
+          <button
+            type="button"
+            onClick={onPauseAll}
+            className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1.5 text-[11px] text-muted transition-colors hover:text-fg"
+          >
+            <Pause className="h-3.5 w-3.5" />
+            Pause all
+          </button>
+        </div>
+
         <button
           type="button"
           title="Sorting arrives in a later milestone"
@@ -165,6 +192,7 @@ export function DownloadList({
               onCancel={onCancel}
               onRemove={onRemove}
               onReveal={onReveal}
+              onPriority={onPriority}
             />
           ))}
         </div>
@@ -195,12 +223,14 @@ function DownloadRow({
   onCancel,
   onRemove,
   onReveal,
+  onPriority,
 }: {
   download: DownloadRow;
   onToggle: (id: string) => void;
   onCancel: (id: string) => void;
   onRemove: (id: string) => void;
   onReveal: (download: DownloadRow) => void;
+  onPriority: (id: string, delta: number) => void;
 }) {
   const kind = KIND_META[download.kind];
   const status = STATUS_META[download.status];
@@ -308,6 +338,22 @@ function DownloadRow({
 
       <div className="flex items-center justify-between md:justify-end md:gap-1">
         <div className="flex items-center gap-1">
+          {download.status === "queued" && (
+            <>
+              <RowButton
+                label="Raise queue priority"
+                onClick={() => onPriority(download.id, 1)}
+              >
+                <ArrowUp className="h-4 w-4" />
+              </RowButton>
+              <RowButton
+                label="Lower queue priority"
+                onClick={() => onPriority(download.id, -1)}
+              >
+                <ArrowDown className="h-4 w-4" />
+              </RowButton>
+            </>
+          )}
           <RowButton
             label={
               download.status === "downloading"

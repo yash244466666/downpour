@@ -1,7 +1,7 @@
 # CLAUDE.md — Downpour
 
 > Project context for Claude Code. Read this before changing anything.
-> Last updated: 2026-10-31 (M3 complete).
+> Last updated: 2026-10-31 (M4 complete).
 
 ## 1. What this is
 
@@ -10,13 +10,12 @@ manager in the IDM class: 1–32 parallel connections per file, crash-safe resum
 queues, scheduler, bandwidth throttling, browser download take-over, media
 grabbing (HLS/DASH/yt-dlp), and a site grabber — wrapped in a modern dashboard.
 
-**Current status: M3 complete.** Single-stream and multi-connection downloads
-work end to end, and the desktop dashboard is wired to the engine. Do not
-describe unfinished features as working.
+**Current status: M4 complete.** Downloads, the desktop dashboard, and the
+queue/scheduler are live. Do not describe unfinished features as working.
 
 | Area | State |
 |---|---|
-| Rust workspace | Compiles; 92 tests pass; clippy `-D warnings` clean |
+| Rust workspace | Compiles; 97 tests pass; clippy `-D warnings` clean |
 | Shared types / IPC contract | DTOs, error codes, framing, handshake types |
 | SQLite schema + migrations | Initial schema, WAL, STRICT tables, download queries |
 | Segment planner / filename safety | Planner exists but drives M2; filename hardening live |
@@ -26,8 +25,10 @@ describe unfinished features as working.
 | Crash testing | Engine restart tests + a real SIGKILL CLI test (Unix) |
 | IPC server/client | **Not implemented** — protocol types only (M5) |
 | CLI | `add`, `get`, `run`, `list`, `info`, `pause`, `cancel`, `version` work |
-| Desktop UI | **Live** dashboard via Tauri commands; settings, tray, notifications |
-| Frontend tests | 12 Vitest unit tests (formatting, filters, mapping) |
+| Desktop UI | **Live** dashboard; settings, tray, notifications, categories |
+| Queue / scheduler | Concurrency + per-host caps, priorities, schedule window |
+| Startup | Autostart toggle and single-instance focus |
+| Frontend tests | 20 Vitest unit tests (formatting, filters, mapping) |
 | Browser extension / native host | **Not implemented** — stdio framing only |
 | Media / grabber | Classification + batch-pattern expansion only |
 | Packaging / signing / updater | Tauri shell + icons; no release workflow |
@@ -259,9 +260,9 @@ pnpm --dir apps/desktop build
 - Crash tests use a spawned CLI process + SIGKILL (`taskkill /F` on Windows)
   and compare SHA-256 against the source.
 - UI tests currently stop at typecheck/build; Vitest + Playwright land with M3.
-- Current total: **92 Rust tests** (37 core, 22 engine integration, 1 CLI
+- Current total: **97 Rust tests** (42 core, 22 engine integration, 1 CLI
   crash, 6 store, 6 testkit, 4 types, plus IPC/media/grabber/nm-host units)
-  and **12 frontend tests** (Vitest).
+  and **20 frontend tests** (Vitest).
 - Never add a test that downloads from the public internet.
 
 ## 11. Milestones
@@ -274,7 +275,8 @@ Full detail in `docs/roadmap.md`.
 | M1 | Probe, single-stream transfer, SQLite journal/resume, pause, CLI | ✅ |
 | M2 | Multi-connection, dynamic segmentation, throttle, retries, kill-9 tests | ✅ |
 | M3 | Full UI wired to engine, tray, notifications, settings | ✅ |
-| M4 | Queue, scheduler, categories, autostart, single-instance, updater | next |
+| M4 | Queue, scheduler, categories, autostart, single-instance | ✅ |
+| M5 | IPC server/client, native host, Chromium/Edge extension | next |
 | M3 | Full UI wired to engine, tray, notifications, settings | |
 | M4 | Queue, scheduler, categories, autostart, single-instance, updater | |
 | M5 | IPC server/client, native host, Chromium/Edge extension | |
@@ -295,9 +297,14 @@ retries; a real SIGKILL mid-transfer resumes to a byte-exact file.
 add/pause/resume/cancel work from the UI, settings persist, and the tray and
 notifications are wired.
 
-**M4 exit criteria:** a persistent queue with priorities and per-host limits,
-categories, a start/stop scheduler, autostart, single-instance, and updater
-wiring.
+**M4 exit criteria (met):** a persistent queue with priorities and per-host
+limits, category filters, a start/stop scheduler, autostart, and
+single-instance. The updater is deferred to M8, where release signing keys
+exist; the updater UI is not shipped yet.
+
+**M5 exit criteria:** a local IPC server/client with token auth, the
+native-messaging host registered by the CLI, and a Chromium/Edge extension that
+takes over downloads and hands over cookies, referer, and user agent.
 
 ## 12. Branching and releases
 
@@ -337,8 +344,13 @@ the grabber:
   The desktop app gives each running download its own engine/connection; the
   queue (M4) will bound concurrency.
 - `Engine::open` performs crash recovery once per process. Any later engine
-  (per Tauri command, per download) must use `open_without_recovery`, or it
-  will flip a live transfer to `paused`.
+  (per Tauri command, per download, CLI `list`/`pause`/`cancel`) must use
+  `open_without_recovery`, or it will flip a live transfer to `paused`. Only
+  CLI `run`/`get` recover.
+- The desktop scheduler ticks every 1.5 s, starts **queued** downloads only
+  (never paused ones) within concurrency/per-host limits, and pauses running
+  transfers outside the schedule window. Do not auto-start paused rows; that
+  would override an explicit user pause.
 - Segments are finer-grained than workers (about 3×), and workers pull from a
   shared queue; do not reintroduce per-worker fixed segments.
 - Ctrl-C in the CLI pauses (commits progress, keeps the `.downpour-part`).

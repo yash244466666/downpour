@@ -13,6 +13,12 @@ export interface MediaTools {
   ffmpeg: string | null;
 }
 
+export interface UpdateStatus {
+  configured: boolean;
+  version: string | null;
+  message: string;
+}
+
 export interface Settings {
   downloadDir: string;
   connections: number;
@@ -38,6 +44,10 @@ export async function fetchEngineInfo(): Promise<EngineInfo | null> {
 
 export async function getMediaTools(): Promise<MediaTools> {
   return invoke<MediaTools>("get_media_tools");
+}
+
+export async function checkForUpdates(): Promise<UpdateStatus> {
+  return invoke<UpdateStatus>("check_for_updates");
 }
 
 export async function expandUrls(input: string): Promise<string[]> {

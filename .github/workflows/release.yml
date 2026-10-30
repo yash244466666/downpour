@@ -1,0 +1,110 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Bundle (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            name: linux
+            args: --bundles deb,appimage
+          - os: windows-latest
+            name: windows
+            args: --bundles nsis
+          - os: macos-15
+            name: macos
+            args: --target universal-apple-darwin
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Add universal macOS targets
+        if: matrix.name == 'macos'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install Linux dependencies
+        if: matrix.name == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libxdo-dev \
+            patchelf
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build CLI and native host
+        run: cargo build --release -p downpour-cli -p downpour-nm-host
+
+      # Signing: provide the maintainer credentials as repository secrets and
+      # uncomment the env block below. Empty secrets must not be passed, or
+      # Tauri tries to import an empty certificate.
+      #
+      # env:
+      #   APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      #   APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      #   APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      #   APPLE_ID: ${{ secrets.APPLE_ID }}
+      #   APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      #   APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      #   TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      - name: Build installers
+        run: pnpm --dir apps/desktop tauri build ${{ matrix.args }}
+
+      - name: Collect artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: downpour-${{ matrix.name }}
+          if-no-files-found: error
+          path: |
+            apps/desktop/src-tauri/target/**/release/bundle/**
+            target/release/downpour
+            target/release/downpour.exe
+            target/release/downpour-nm-host
+            target/release/downpour-nm-host.exe
+
+  publish:
+    name: Draft release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: artifacts/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

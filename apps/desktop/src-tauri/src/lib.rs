@@ -230,6 +230,47 @@ struct MediaTools {
     ffmpeg: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateStatus {
+    configured: bool,
+    version: Option<String>,
+    message: String,
+}
+
+#[tauri::command]
+async fn check_for_updates(app: AppHandle) -> UpdateStatus {
+    use tauri_plugin_updater::UpdaterExt;
+
+    let updater = match app.updater() {
+        Ok(updater) => updater,
+        Err(error) => {
+            return UpdateStatus {
+                configured: false,
+                version: None,
+                message: format!("Updates are not configured in this build: {error}"),
+            };
+        }
+    };
+    match updater.check().await {
+        Ok(Some(update)) => UpdateStatus {
+            configured: true,
+            version: Some(update.version.clone()),
+            message: format!("Version {} is available.", update.version),
+        },
+        Ok(None) => UpdateStatus {
+            configured: true,
+            version: None,
+            message: "You are on the latest version.".to_owned(),
+        },
+        Err(error) => UpdateStatus {
+            configured: false,
+            version: None,
+            message: format!("Update check failed: {error}"),
+        },
+    }
+}
+
 #[tauri::command]
 fn expand_urls(input: String) -> Vec<String> {
     downpour_grabber::expand_lines(&input, 500)
@@ -989,6 +1030,7 @@ pub fn run() {
         ))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             app.manage(load_state());
             build_tray(app)?;
@@ -1023,6 +1065,7 @@ pub fn run() {
             engine_info,
             get_media_tools,
             expand_urls,
+            check_for_updates,
             list_downloads,
             add_download,
             start_download,

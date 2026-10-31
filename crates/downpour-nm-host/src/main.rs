@@ -17,6 +17,11 @@ use serde_json::{Value, json};
 const MAX_HOST_TO_BROWSER: usize = 1024 * 1024;
 const MAX_BROWSER_TO_HOST: usize = 64 * 1024 * 1024;
 
+/// Extension-facing compatibility version. Bumped when a host change requires
+/// newer extension behaviour; extensions compare it with their own constant and
+/// fall back to the browser downloader when the host is too old.
+const EXTENSION_PROTOCOL: u32 = 1;
+
 fn main() {
     if let Err(error) = run() {
         eprintln!("downpour-nm-host: {error}");
@@ -94,7 +99,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             };
 
             let envelope = match (response.result, response.error) {
-                (Some(result), _) => json!({ "result": result }),
+                (Some(result), _) => success_envelope(result),
                 (None, Some(error)) => json!({ "error": error }),
                 (None, None) => json!({
                     "error": {"code": "internal", "message": "empty engine response"}
@@ -116,16 +121,31 @@ fn validate_invocation() -> Result<(), io::Error> {
             "this binary is launched by a browser, not by hand",
         ));
     };
+    validate_invocation_first(&first)
+}
+
+fn validate_invocation_first(first: &str) -> Result<(), io::Error> {
     if first.starts_with("chrome-extension://") {
         return Ok(());
     }
-    if std::path::Path::new(&first).is_file() {
+    if std::path::Path::new(first).is_file() {
         return Ok(());
     }
     Err(io::Error::new(
         io::ErrorKind::InvalidInput,
         "unrecognized browser invocation arguments",
     ))
+}
+
+/// Successful browser responses carry the extension compatibility fields next
+/// to the engine result. Older extensions ignore unknown keys; newer ones use
+/// `extension_protocol` to decide whether take-over is safe.
+fn success_envelope(result: Value) -> Value {
+    json!({
+        "result": result,
+        "extension_protocol": EXTENSION_PROTOCOL,
+        "host_version": env!("CARGO_PKG_VERSION"),
+    })
 }
 
 async fn connect_with_retry() -> Result<IpcClient, String> {
@@ -234,5 +254,33 @@ mod tests {
         buffer.extend_from_slice(&[0_u8; 8]);
         let mut cursor = io::Cursor::new(buffer);
         assert!(read_browser_frame(&mut cursor).is_err());
+    }
+
+    #[test]
+    fn success_envelope_carries_the_extension_protocol() {
+        let envelope = success_envelope(json!({"ok": true}));
+        assert_eq!(envelope["result"], json!({"ok": true}));
+        assert_eq!(envelope["extension_protocol"], EXTENSION_PROTOCOL);
+        assert_eq!(envelope["host_version"], env!("CARGO_PKG_VERSION"));
+    }
+
+    #[test]
+    fn accepts_a_chromium_extension_origin() {
+        assert!(validate_invocation_first("chrome-extension://abc/").is_ok());
+    }
+
+    #[test]
+    fn accepts_a_firefox_manifest_path() {
+        let path =
+            std::env::temp_dir().join(format!("downpour-nm-host-test-{}.json", std::process::id()));
+        std::fs::write(&path, b"{}").unwrap();
+        let result = validate_invocation_first(path.to_str().unwrap());
+        let _ = std::fs::remove_file(&path);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn rejects_unknown_invocation_arguments() {
+        assert!(validate_invocation_first("--help").is_err());
     }
 }

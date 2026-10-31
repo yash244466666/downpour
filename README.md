@@ -63,7 +63,8 @@ traditionally Windows-only, closed-source, and visually dated. Downpour is:
   and remembers manifest URLs for a "Download media" menu.
 - **Local IPC** over a Unix socket / Windows named pipe with a per-start token.
 - **Live desktop dashboard** wired to the engine: add, pause, resume, cancel,
-  remove, reveal in folder, category filters, and persistent settings.
+  remove, reveal in folder, category filters, persistent settings, and a
+  rolling aggregate-speed graph.
 - Tray icon, close-to-tray, completion notifications, autostart, and
   single-instance behavior.
 - **Real downloads over 1–32 connections** with probe-based size/range/ETag

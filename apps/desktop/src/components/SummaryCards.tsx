@@ -13,7 +13,13 @@ import { Sparkline } from "./Sparkline";
 
 type IconComponent = ComponentType<LucideProps>;
 
-export function SummaryCards({ downloads }: { downloads: DownloadRow[] }) {
+export function SummaryCards({
+  downloads,
+  speedHistory,
+}: {
+  downloads: DownloadRow[];
+  speedHistory: number[];
+}) {
   const active = downloads.filter((item) => item.status === "downloading");
   const paused = downloads.filter((item) => item.status === "paused").length;
   const queued = downloads.filter((item) => item.status === "queued").length;
@@ -42,7 +48,7 @@ export function SummaryCards({ downloads }: { downloads: DownloadRow[] }) {
         value={formatSpeed(speed)}
         hint={`${connections} connections open`}
         icon={Gauge}
-        chart={[9, 15, 12, 21, 18, 27, 24, 31, 28, 36, 33, 41]}
+        chart={speedHistory}
       />
       <StatCard
         label="In queue"

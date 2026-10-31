@@ -631,6 +631,37 @@ async fn speed_limit_throttles_a_single_stream() {
     server.stop().await;
 }
 
+#[tokio::test]
+async fn removing_a_download_can_keep_or_delete_the_file() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut engine = test_engine(temp.path());
+
+    let id = add(
+        &mut engine,
+        temp.path(),
+        "http://127.0.0.1:1/keep.bin".to_owned(),
+    );
+    let path = engine.get(id).unwrap().unwrap().final_path.unwrap();
+    std::fs::write(&path, b"keep me").unwrap();
+    engine.remove(id, false).unwrap();
+    assert!(std::path::Path::new(&path).exists(), "file must be kept");
+    assert!(engine.get(id).unwrap().is_none());
+
+    let id = add(
+        &mut engine,
+        temp.path(),
+        "http://127.0.0.1:1/delete.bin".to_owned(),
+    );
+    let path = engine.get(id).unwrap().unwrap().final_path.unwrap();
+    std::fs::write(&path, b"delete me").unwrap();
+    engine.remove(id, true).unwrap();
+    assert!(
+        !std::path::Path::new(&path).exists(),
+        "file must be deleted"
+    );
+    assert!(engine.get(id).unwrap().is_none());
+}
+
 #[test]
 fn passive_engines_do_not_recover_running_downloads() {
     let temp = tempfile::tempdir().unwrap();

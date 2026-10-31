@@ -1,10 +1,6 @@
 import type { ComponentType, ReactNode } from "react";
 import {
-  Activity,
   Archive,
-  CircleCheck,
-  Clock,
-  Download,
   FileText,
   Film,
   FolderOpen,
@@ -14,26 +10,11 @@ import {
 } from "lucide-react";
 import { formatSpeed } from "../lib/format";
 import type { DownloadKind } from "../lib/downloads";
-import type { Filter } from "../lib/filters";
 import { cn } from "../lib/utils";
 import { Logo } from "./Logo";
 import { Sparkline } from "./Sparkline";
 
 type IconComponent = ComponentType<LucideProps>;
-
-interface Counts {
-  all: number;
-  active: number;
-  queued: number;
-  completed: number;
-}
-
-const NAV: Array<{ filter: Filter; label: string; icon: IconComponent }> = [
-  { filter: "all", label: "All downloads", icon: Download },
-  { filter: "active", label: "Active", icon: Activity },
-  { filter: "queued", label: "Queued", icon: Clock },
-  { filter: "completed", label: "Completed", icon: CircleCheck },
-];
 
 const CATEGORIES: Array<{
   label: string;
@@ -49,21 +30,15 @@ const CATEGORIES: Array<{
 ];
 
 export function Sidebar({
-  counts,
   categoryCounts,
-  filter,
   category,
-  onFilter,
   onCategory,
   totalSpeed,
   preview,
   onOpenFolder,
 }: {
-  counts: Counts;
   categoryCounts: Partial<Record<DownloadKind, number>>;
-  filter: Filter;
   category: DownloadKind | null;
-  onFilter: (filter: Filter) => void;
   onCategory: (kind: DownloadKind | null) => void;
   totalSpeed: number;
   preview: boolean;
@@ -83,41 +58,7 @@ export function Sidebar({
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-2">
-        <SectionLabel>Library</SectionLabel>
-        <div className="mt-1 space-y-0.5">
-          {NAV.map((item) => {
-            const isActive = filter === item.filter;
-            return (
-              <button
-                key={item.filter}
-                type="button"
-                onClick={() => onFilter(item.filter)}
-                aria-current={isActive ? "page" : undefined}
-                className={cn(
-                  "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] transition-colors",
-                  isActive
-                    ? "bg-accent-soft font-medium text-accent"
-                    : "text-muted hover:bg-surface-2 hover:text-fg",
-                )}
-              >
-                <item.icon className="h-4 w-4 shrink-0" />
-                <span className="truncate">{item.label}</span>
-                <span
-                  className={cn(
-                    "ml-auto rounded-md px-1.5 py-0.5 text-[10px] tabular-nums",
-                    isActive
-                      ? "bg-accent/15 text-accent"
-                      : "bg-surface-2 text-muted",
-                  )}
-                >
-                  {counts[item.filter]}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-        <SectionLabel className="mt-6">Categories</SectionLabel>
+        <SectionLabel className="mt-2">Categories</SectionLabel>
         <div className="mt-1 space-y-0.5">
           {CATEGORIES.map((item) => {
             const isActive = category === item.kind;
@@ -134,9 +75,7 @@ export function Sidebar({
                     : "text-muted hover:bg-surface-2 hover:text-fg",
                 )}
               >
-                <item.icon
-                  className={cn("h-4 w-4 shrink-0", item.className)}
-                />
+                <item.icon className={cn("h-4 w-4 shrink-0", item.className)} />
                 <span className="truncate">{item.label}</span>
                 <span className="ml-auto rounded-md bg-surface-2 px-1.5 py-0.5 text-[10px] tabular-nums">
                   {categoryCounts[item.kind] ?? 0}

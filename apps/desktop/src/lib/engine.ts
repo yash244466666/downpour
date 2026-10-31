@@ -13,6 +13,11 @@ export interface MediaTools {
   ffmpeg: string | null;
 }
 
+export interface BatchResult {
+  added: number;
+  failed: string[];
+}
+
 export interface UpdateStatus {
   configured: boolean;
   version: string | null;
@@ -68,6 +73,18 @@ export async function addDownload(options: {
   return invoke<string>("add_download", options);
 }
 
+export async function addDownloads(options: {
+  urls: string[];
+  directory?: string;
+  connections?: number;
+}): Promise<BatchResult> {
+  return invoke<BatchResult>("add_downloads", options);
+}
+
+export async function clearFinished(): Promise<number> {
+  return invoke<number>("clear_finished");
+}
+
 export async function startDownload(id: string): Promise<void> {
   await invoke("start_download", { id });
 }
@@ -80,8 +97,11 @@ export async function cancelDownload(id: string): Promise<void> {
   await invoke("cancel_download", { id });
 }
 
-export async function removeDownload(id: string): Promise<void> {
-  await invoke("remove_download", { id });
+export async function removeDownload(
+  id: string,
+  deleteFile = false,
+): Promise<void> {
+  await invoke("remove_download", { id, deleteFile });
 }
 
 export async function getSettings(): Promise<Settings> {

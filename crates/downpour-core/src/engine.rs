@@ -321,14 +321,23 @@ impl Engine {
         Ok(())
     }
 
-    /// Forget a download that is not running. Files on disk are left alone;
-    /// the partial temp file is removed.
-    pub fn remove(&mut self, id: DownloadId) -> EngineResult<()> {
+    /// Forget a download that is not running. The partial temp file is always
+    /// removed; the completed file only when `delete_file` is true.
+    pub fn remove(&mut self, id: DownloadId, delete_file: bool) -> EngineResult<()> {
         let record = self.record(id)?;
         if record.state.is_running() {
             return Err(EngineError::Internal(
                 "download is running; cancel it first".to_owned(),
             ));
+        }
+        if delete_file {
+            if let Some(path) = record.final_path.as_deref() {
+                match std::fs::remove_file(path) {
+                    Ok(()) => {}
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(EngineError::Io(error)),
+                }
+            }
         }
         if let Some(temp) = record.temp_path.as_deref() {
             let _ = std::fs::remove_file(temp);
@@ -336,6 +345,11 @@ impl Engine {
         downloads::delete(self.store.connection(), id)?;
         self.ephemeral_headers.remove(&id);
         Ok(())
+    }
+
+    /// Remove completed, failed, and canceled rows. Files stay on disk.
+    pub fn clear_finished(&mut self) -> EngineResult<usize> {
+        Ok(downloads::delete_finished(self.store.connection())?)
     }
 
     /// Mark a queued or paused download as paused.

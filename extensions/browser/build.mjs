@@ -75,6 +75,17 @@ function validateShared() {
     const path = join(HERE, "shared", file);
     if (!existsSync(path)) fail(`missing shared file: ${path}`);
   }
+
+  const host = readFileSync(join(REPO_ROOT, "crates/downpour-nm-host/src/main.rs"), "utf8");
+  const extension = readFileSync(join(HERE, "shared", "background.js"), "utf8");
+  const hostMatch = host.match(/const EXTENSION_PROTOCOL: u32 = (\d+);/);
+  const extensionMatch = extension.match(/const EXTENSION_PROTOCOL = (\d+);/);
+  if (!hostMatch || !extensionMatch) {
+    fail("cannot find EXTENSION_PROTOCOL in the native host or the extension");
+  }
+  if (hostMatch[1] !== extensionMatch[1]) {
+    fail(`extension protocol mismatch: host ${hostMatch[1]}, extension ${extensionMatch[1]}`);
+  }
 }
 
 function validateManifest(name, manifest, extensionVersion) {

@@ -147,7 +147,7 @@ fn engine_info() -> EngineInfo {
 #[tauri::command]
 async fn list_downloads(state: State<'_, AppState>) -> Result<Vec<DownloadView>, String> {
     let engine = open_engine(&state)?;
-    let records = engine.list(500).map_err(|error| error.to_string())?;
+    let records = engine.list(2000).map_err(|error| error.to_string())?;
     let speeds = lock(&state.speeds).clone();
     Ok(records
         .iter()
@@ -214,9 +214,12 @@ fn queue_add(
 
     if start_now {
         if let Some(kind) = kind {
+            // Media jobs carry the browser cookie header, which is not
+            // persisted; start them directly.
             media::start_media(app, id, url, kind, cookie_header)?;
         } else {
-            start_run(app, &id.to_string())?;
+            // The scheduler enforces concurrency and per-host limits.
+            scheduler_tick(app)?;
         }
     }
     let _ = app.emit("downloads-changed", ());
@@ -318,14 +321,64 @@ async fn cancel_download(state: State<'_, AppState>, id: String) -> Result<(), S
 }
 
 #[tauri::command]
-async fn remove_download(state: State<'_, AppState>, id: String) -> Result<(), String> {
+async fn remove_download(
+    state: State<'_, AppState>,
+    id: String,
+    delete_file: Option<bool>,
+) -> Result<(), String> {
     if lock(&state.running).contains_key(&id) {
         return Err("download is running; cancel it first".to_owned());
     }
     let mut engine = open_engine(&state)?;
     engine
-        .remove(parse_id(&id)?)
+        .remove(parse_id(&id)?, delete_file.unwrap_or(false))
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn clear_finished(state: State<'_, AppState>) -> Result<usize, String> {
+    let mut engine = open_engine(&state)?;
+    engine.clear_finished().map_err(|error| error.to_string())
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BatchResult {
+    added: usize,
+    failed: Vec<String>,
+}
+
+#[tauri::command]
+async fn add_downloads(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    urls: Vec<String>,
+    directory: Option<String>,
+    connections: Option<u16>,
+) -> Result<BatchResult, String> {
+    let mut engine = open_engine(&state)?;
+    let mut added = 0_usize;
+    let mut failed = Vec::new();
+
+    for url in urls.into_iter().take(500) {
+        let request = AddDownloadRequest {
+            url: url.clone(),
+            dest_dir: directory.clone(),
+            connections,
+            start_immediately: false,
+            source: DownloadSource::Batch,
+            ..AddDownloadRequest::default()
+        };
+        match engine.add(request) {
+            Ok(_) => added += 1,
+            Err(error) => failed.push(format!("{url}: {error}")),
+        }
+    }
+    if added > 0 {
+        scheduler_tick(&app)?;
+    }
+    let _ = app.emit("downloads-changed", ());
+    Ok(BatchResult { added, failed })
 }
 
 fn setting_u64(engine: &Engine, key: &str) -> Option<u64> {
@@ -562,7 +615,7 @@ fn scheduler_tick(app: &AppHandle) -> Result<(), String> {
     }
 
     let engine = open_engine(&state)?;
-    let records = engine.list(500).map_err(|error| error.to_string())?;
+    let records = engine.list(2000).map_err(|error| error.to_string())?;
     let running_ids: std::collections::HashSet<String> =
         lock(&state.running).keys().cloned().collect();
 
@@ -590,7 +643,18 @@ fn scheduler_tick(app: &AppHandle) -> Result<(), String> {
         if per_host.get(&host).copied().unwrap_or(0) >= usize::from(settings.max_per_host) {
             continue;
         }
-        if start_run(app, &id).is_ok() {
+        let media_kind = downpour_media::classify_url(&record.url).filter(|kind| {
+            matches!(
+                kind,
+                downpour_media::MediaKind::Hls | downpour_media::MediaKind::Dash
+            )
+        });
+        let started = if let Some(kind) = media_kind {
+            media::start_media(app, record.id, record.url.clone(), kind, None).is_ok()
+        } else {
+            start_run(app, &id).is_ok()
+        };
+        if started {
             slots -= 1;
             *per_host.entry(host).or_default() += 1;
         }
@@ -954,10 +1018,19 @@ fn ipc_dispatch(app: &AppHandle, request: &Request) -> Response {
             let mut engine = open_engine(state)?;
             engine.cancel(parsed).map_err(|error| error.to_string())
         }),
-        "download.remove" => ipc_id_method(app, request, |state, parsed, _raw| {
-            let mut engine = open_engine(state)?;
-            engine.remove(parsed).map_err(|error| error.to_string())
-        }),
+        "download.remove" => {
+            let delete_file = request
+                .params
+                .get("delete_file")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false);
+            ipc_id_method(app, request, |state, parsed, _raw| {
+                let mut engine = open_engine(state)?;
+                engine
+                    .remove(parsed, delete_file)
+                    .map_err(|error| error.to_string())
+            })
+        }
         other => ipc_error(id, format!("unknown method: {other}")),
     }
 }
@@ -1187,6 +1260,8 @@ pub fn run() {
             check_for_updates,
             list_downloads,
             add_download,
+            add_downloads,
+            clear_finished,
             start_download,
             pause_download,
             cancel_download,

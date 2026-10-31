@@ -703,6 +703,15 @@ pub fn set_setting(conn: &Connection, key: &str, value_json: &str) -> Result<()>
     Ok(())
 }
 
+/// Delete completed, failed, and canceled rows. Files on disk are untouched.
+pub fn delete_finished(conn: &Connection) -> Result<usize> {
+    let changed = conn.execute(
+        "DELETE FROM downloads WHERE status IN ('completed', 'failed', 'canceled')",
+        [],
+    )?;
+    Ok(changed)
+}
+
 /// Delete a download row. Segments and history references cascade or remain
 /// as history; the caller decides whether to remove files.
 pub fn delete(conn: &Connection, id: DownloadId) -> Result<usize> {
@@ -811,6 +820,24 @@ mod tests {
         assert_eq!(recover_interrupted(store.connection()).unwrap(), 1);
         let record = get(store.connection(), id).unwrap().unwrap();
         assert_eq!(record.state, DownloadState::Paused);
+    }
+
+    #[test]
+    fn clear_finished_keeps_active_and_queued_rows() {
+        let store = Store::open_in_memory().unwrap();
+        let completed = DownloadId::new();
+        let canceled = DownloadId::new();
+        let queued = DownloadId::new();
+        for id in [completed, canceled, queued] {
+            insert(store.connection(), &sample(id)).unwrap();
+        }
+        set_state(store.connection(), completed, DownloadState::Completed).unwrap();
+        set_state(store.connection(), canceled, DownloadState::Canceled).unwrap();
+
+        assert_eq!(delete_finished(store.connection()).unwrap(), 2);
+        let remaining = list(store.connection(), 10).unwrap();
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].id, queued);
     }
 
     #[test]

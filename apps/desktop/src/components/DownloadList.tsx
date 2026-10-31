@@ -96,12 +96,15 @@ export function DownloadList({
   onFilter,
   onToggle,
   onCancel,
-  onRemove,
+  onDelete,
   onReveal,
   onPriority,
   onStartAll,
   onPauseAll,
   onBatch,
+  onClear,
+  clearableCount,
+  onShowAll,
 }: {
   downloads: DownloadRow[];
   total: number;
@@ -110,12 +113,15 @@ export function DownloadList({
   onFilter: (filter: Filter) => void;
   onToggle: (id: string) => void;
   onCancel: (id: string) => void;
-  onRemove: (id: string) => void;
+  onDelete: (download: DownloadRow) => void;
   onReveal: (download: DownloadRow) => void;
   onPriority: (id: string, delta: number) => void;
   onStartAll: () => void;
   onPauseAll: () => void;
   onBatch: () => void;
+  onClear: () => void;
+  clearableCount: number;
+  onShowAll: () => void;
 }) {
   return (
     <section className="mt-6 overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
@@ -128,6 +134,15 @@ export function DownloadList({
           <span className="rounded-md border border-warning/30 bg-warning-soft px-1.5 py-0.5 text-[10px] font-medium text-warning">
             Preview data
           </span>
+        )}
+        {downloads.length < total && (
+          <button
+            type="button"
+            onClick={onShowAll}
+            className="rounded-md border border-warning/30 bg-warning-soft px-1.5 py-0.5 text-[10px] font-medium text-warning transition-colors hover:brightness-110"
+          >
+            Showing {downloads.length} of {total} · Show all
+          </button>
         )}
 
         <div
@@ -179,6 +194,16 @@ export function DownloadList({
             <Pause className="h-3.5 w-3.5" />
             Pause all
           </button>
+          {clearableCount > 0 && (
+            <button
+              type="button"
+              onClick={onClear}
+              className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1.5 text-[11px] text-muted transition-colors hover:text-fg"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Clear ({clearableCount})
+            </button>
+          )}
         </div>
 
         <button
@@ -192,7 +217,11 @@ export function DownloadList({
       </div>
 
       {downloads.length === 0 ? (
-        <EmptyState queryless={filter === "all"} />
+        <EmptyState
+          queryless={filter === "all"}
+          hiddenCount={total}
+          onShowAll={onShowAll}
+        />
       ) : (
         <div className="divide-y divide-line">
           {downloads.map((download) => (
@@ -201,7 +230,7 @@ export function DownloadList({
               download={download}
               onToggle={onToggle}
               onCancel={onCancel}
-              onRemove={onRemove}
+              onDelete={onDelete}
               onReveal={onReveal}
               onPriority={onPriority}
             />
@@ -212,7 +241,15 @@ export function DownloadList({
   );
 }
 
-function EmptyState({ queryless }: { queryless: boolean }) {
+function EmptyState({
+  queryless,
+  hiddenCount,
+  onShowAll,
+}: {
+  queryless: boolean;
+  hiddenCount: number;
+  onShowAll: () => void;
+}) {
   return (
     <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
       <div className="grid h-12 w-12 place-items-center rounded-2xl border border-line bg-surface-2 text-muted">
@@ -220,10 +257,21 @@ function EmptyState({ queryless }: { queryless: boolean }) {
       </div>
       <p className="mt-3 text-sm font-medium">Nothing here yet</p>
       <p className="mt-1 max-w-xs text-xs text-muted">
-        {queryless
-          ? "Add a URL to start a download."
-          : "No downloads match this filter or search."}
+        {hiddenCount > 0
+          ? `${hiddenCount} download${hiddenCount === 1 ? "" : "s"} are hidden by the current filters.`
+          : queryless
+            ? "Add a URL to start a download."
+            : "No downloads match this filter or search."}
       </p>
+      {hiddenCount > 0 && (
+        <button
+          type="button"
+          onClick={onShowAll}
+          className="mt-3 rounded-lg bg-accent px-3 py-1.5 text-[11px] font-medium text-white transition-[filter] hover:brightness-110"
+        >
+          Show all downloads
+        </button>
+      )}
     </div>
   );
 }
@@ -232,14 +280,14 @@ function DownloadRow({
   download,
   onToggle,
   onCancel,
-  onRemove,
+  onDelete,
   onReveal,
   onPriority,
 }: {
   download: DownloadRow;
   onToggle: (id: string) => void;
   onCancel: (id: string) => void;
-  onRemove: (id: string) => void;
+  onDelete: (download: DownloadRow) => void;
   onReveal: (download: DownloadRow) => void;
   onPriority: (id: string, delta: number) => void;
 }) {
@@ -396,9 +444,9 @@ function DownloadRow({
             <FolderOpen className="h-4 w-4" />
           </RowButton>
           <RowButton
-            label="Remove from list"
+            label="Remove download"
             disabled={!canRemove}
-            onClick={() => onRemove(download.id)}
+            onClick={() => onDelete(download)}
           >
             <Trash2 className="h-4 w-4" />
           </RowButton>

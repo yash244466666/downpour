@@ -150,6 +150,9 @@ Concurrency across downloads is **not** part of M2; it lands with the queue.
 
 ## Releases
 
+- **v0.3.2** (2026-10-31) — fix Check now hanging on “Checking…” when the
+  updater plugin is absent; the plugin call is guarded and a client-side
+  timeout keeps the button responsive.
 - **v0.3.1** (2026-10-31) — update checks now query the public GitHub releases
   feed when no signed channel is configured; the sidebar version badge is
   derived from `tauri.conf.json` instead of a hardcoded value.

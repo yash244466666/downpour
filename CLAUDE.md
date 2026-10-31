@@ -1,7 +1,7 @@
 # CLAUDE.md — Downpour
 
 > Project context for Claude Code. Read this before changing anything.
-> Last updated: 2026-10-31 (v0.3.1 released).
+> Last updated: 2026-10-31 (v0.3.2 released).
 
 ## 1. What this is
 
@@ -10,7 +10,7 @@ manager in the IDM class: 1–32 parallel connections per file, crash-safe resum
 queues, scheduler, bandwidth throttling, browser download take-over, media
 grabbing (HLS/DASH/yt-dlp), and a site grabber — wrapped in a modern dashboard.
 
-**Current status: v0.3.1 released.** All v1 milestones (M0–M9) are delivered
+**Current status: v0.3.2 released.** All v1 milestones (M0–M9) are delivered
 except the documented gaps: signed/notarized releases, a configured update
 channel, managed yt-dlp download, quality selection, the Safari extension, the
 grabber UI, and Bengali localization. The repo is public;
@@ -37,7 +37,7 @@ grabber UI, and Bengali localization. The repo is public;
 | Media | HLS parser/downloader, AES-128, yt-dlp detection/run; DASH via yt-dlp |
 | Grabber | Robots-aware BFS crawler, batch expansion, persisted job/frontier |
 | Packaging | `.deb` verified locally; release workflow for NSIS/DMG/AppImage |
-| Releases | v0.1.0, v0.1.2, v0.2.0, v0.3.0, and v0.3.1 published; v0.1.1 superseded |
+| Releases | v0.1.0, v0.1.2, v0.2.0, v0.3.0, v0.3.1, and v0.3.2 published; v0.1.1 superseded |
 | Diagnostics | `downpour doctor` (DB, folders, tools, IPC, browser manifests) |
 | Accessibility | Focus rings, reduced motion, labelled controls, dialog autofocus |
 | Signing / updater | Hooks documented; updater plugin wired, unconfigured |

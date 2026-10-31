@@ -6,6 +6,9 @@ import type { MediaTools, Settings } from "../lib/engine";
 import { cn } from "../lib/utils";
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+/// The Rust command times out its network call at 10 s; this is the backstop
+/// for a command that never replies at all.
+const UPDATE_CHECK_TIMEOUT_MS = 15_000;
 
 export function SettingsDialog({
   settings,
@@ -48,12 +51,22 @@ export function SettingsDialog({
       return;
     }
     setCheckingUpdates(true);
+    let timer: number | undefined;
     try {
-      const status = await engine.checkForUpdates();
+      const status = await Promise.race([
+        engine.checkForUpdates(),
+        new Promise<never>((_, reject) => {
+          timer = window.setTimeout(
+            () => reject(new Error("The update check timed out. Try again.")),
+            UPDATE_CHECK_TIMEOUT_MS,
+          );
+        }),
+      ]);
       setUpdateMessage(status.message);
     } catch (cause) {
-      setUpdateMessage(String(cause));
+      setUpdateMessage(cause instanceof Error ? cause.message : String(cause));
     } finally {
+      if (timer !== undefined) window.clearTimeout(timer);
       setCheckingUpdates(false);
     }
   }

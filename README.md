@@ -288,6 +288,9 @@ redirects, auth failures, and traversal filenames.
 - **`main` is release-only and pulls from `dev`.** Local `main` is configured to
   track `origin/dev`, so `git pull` on `main` brings the latest integration
   state. Releases are tagged on `main`.
+- **`dev` and `main` are protected:** changes land through pull requests;
+  direct pushes, force pushes, and branch deletion are blocked. Only the
+  repository owner can merge, and `main` mirrors `dev` at release time.
 - CI must be green before a PR merges.
 - Never force-push `dev` or `main`.
 

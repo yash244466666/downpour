@@ -347,6 +347,9 @@ reserved), dialogs focus trap, automated axe/CSP hardening.
 - **`main` is release-only and pulls from `dev`.** Local `main` is configured to
   track `origin/dev`, so `git pull` on `main` brings dev's changes. Do not
   develop on `main`; do not force-push either branch.
+- Both `dev` and `main` are protected: PRs only, no force pushes, no deletion.
+  Direct pushes fail for everyone, including the owner; only the owner has the
+  write access needed to merge.
 - Branch names: `feat/<slug>`, `fix/<slug>`, `docs/<slug>`, `chore/<slug>`.
 - Commits: imperative subject, ≤72 chars, body explains why. Include the
   attribution line required by the session.

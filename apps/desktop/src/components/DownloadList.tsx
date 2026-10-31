@@ -260,7 +260,8 @@ function DownloadRow({
     download.status === "failed" ||
     download.status === "canceled";
   const canReveal =
-    download.status === "completed" && Boolean(download.finalPath);
+    download.status === "completed" &&
+    Boolean(download.finalPath || download.directory);
 
   return (
     <div className="group grid grid-cols-1 gap-3 px-4 py-4 transition-colors hover:bg-surface-2/40 sm:px-5 md:grid-cols-[minmax(0,1.5fr)_minmax(170px,1fr)_120px_120px_122px] md:items-center md:gap-4">

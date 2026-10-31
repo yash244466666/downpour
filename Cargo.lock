@@ -1162,7 +1162,7 @@ dependencies = [
 
 [[package]]
 name = "downpour-cli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -1182,7 +1182,7 @@ dependencies = [
 
 [[package]]
 name = "downpour-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "bytes",
  "downpour-store",
@@ -1203,7 +1203,7 @@ dependencies = [
 
 [[package]]
 name = "downpour-desktop"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chrono",
  "downpour-core",
@@ -1231,7 +1231,7 @@ dependencies = [
 
 [[package]]
 name = "downpour-grabber"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "downpour-testkit",
  "downpour-types",
@@ -1248,7 +1248,7 @@ dependencies = [
 
 [[package]]
 name = "downpour-ipc"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "downpour-types",
  "getrandom 0.3.4",
@@ -1263,7 +1263,7 @@ dependencies = [
 
 [[package]]
 name = "downpour-media"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "aes",
  "cbc",
@@ -1284,7 +1284,7 @@ dependencies = [
 
 [[package]]
 name = "downpour-nm-host"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "downpour-ipc",
  "downpour-types",
@@ -1297,7 +1297,7 @@ dependencies = [
 
 [[package]]
 name = "downpour-store"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "downpour-types",
  "rusqlite",
@@ -1311,7 +1311,7 @@ dependencies = [
 
 [[package]]
 name = "downpour-testkit"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "axum",
  "bytes",
@@ -1328,7 +1328,7 @@ dependencies = [
 
 [[package]]
 name = "downpour-types"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "serde_json",

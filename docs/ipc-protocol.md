@@ -62,6 +62,26 @@ HLS/DASH URLs are routed to the media pipeline (yt-dlp when installed, native
 HLS fallback otherwise); `cookie_header` is also written to a 0600 cookie file
 for yt-dlp.
 
+## Native-messaging host envelope
+
+`downpour-nm-host` translates each browser message into one engine request and
+wraps successful responses with two top-level fields:
+
+```json
+{
+  "result": { "...": "engine result" },
+  "extension_protocol": 1,
+  "host_version": "0.2.0"
+}
+```
+
+`extension_protocol` is the host↔extension compatibility version, independent
+of both `PROTOCOL_VERSION` and the app version. Extensions compare it with
+their own constant and leave the download to the browser when the host is too
+old. A missing field means a legacy host and is treated as compatible, so old
+and new sides roll out in either order. Error responses keep the existing
+`{ "error": { "code", "message" } }` shape.
+
 ### Planned
 
 `download.get` (per-segment detail), `queue.list`, `settings.get/set`,

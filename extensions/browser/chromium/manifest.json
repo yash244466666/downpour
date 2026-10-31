@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Downpour",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "description": "Send browser downloads to Downpour.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA7XcDJ9aTYPn/7YdSffB7qptxhf74mMG2ZEqy3XnYuV04aDNpP9+XvJ1ODT7MbYydzWBoH4J8D2S0VmWhHCoR7YuoFw7ItmfOx+aWTlXW2mZ82NvSFJLKYuinDTgXSCJ4nui8VDuA7O2DDSRBS8kd9noWlhP3UathNjZPmAJD4yf2UAF+rc2PGSrBQkJ33Eb93v7lk4CjlFwkLvb5s1PQYnmMrr4cERCuIc1cAoX1Cuz5RWrzMUgvAc2GsoHHyqh6woT4gnrIIxOW5b7EMQq3+8wtnKzKJzT9820V3PiS+Rb4s+CECr8fR9535kOGCTKBE1ZcpcEchJ8P236XoXqZIwIDAQAB",
   "permissions": [

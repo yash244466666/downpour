@@ -3,8 +3,19 @@
 // Every eligible browser download is handed to the local engine through the
 // native-messaging host. If the engine is offline the browser download is left
 // alone, so the extension never breaks browsing.
+//
+// Loaded as a Chromium MV3 service worker (importScripts below), or as the
+// second classic script in a Firefox MV3 event page (lib.js runs first).
+
+if (typeof importScripts === "function" && typeof DownpourLib === "undefined") {
+  importScripts("lib.js");
+}
 
 const HOST = "com.downpour.nm";
+/// Bumped when the extension expects new host behaviour. The host reports its
+/// own value in every successful response; a missing value is a legacy host and
+/// is treated as compatible.
+const EXTENSION_PROTOCOL = 1;
 const ENGINE_TIMEOUT_MS = 5000;
 const PING_TIMEOUT_MS = 2500;
 
@@ -48,7 +59,10 @@ function callEngine(message, timeoutMs = ENGINE_TIMEOUT_MS) {
 
 async function engineOnline() {
   const response = await callEngine({ method: "ping" }, PING_TIMEOUT_MS);
-  return Boolean(response && !response.error);
+  if (!response || response.error) return false;
+  const protocol = response.extension_protocol;
+  if (typeof protocol === "number" && protocol < EXTENSION_PROTOCOL) return false;
+  return true;
 }
 
 function cookieHeaderFor(url) {
@@ -58,17 +72,9 @@ function cookieHeaderFor(url) {
         resolve("");
         return;
       }
-      resolve(cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; "));
+      resolve(DownpourLib.cookieHeader(cookies));
     });
   });
-}
-
-function baseName(path) {
-  return (path || "").split(/[\\/]/).pop() || "";
-}
-
-function eligible(url) {
-  return /^https?:/i.test(url);
 }
 
 async function handOff({ url, filename, referer }) {
@@ -77,7 +83,7 @@ async function handOff({ url, filename, referer }) {
     method: "add",
     params: {
       url,
-      name: baseName(filename) || undefined,
+      name: DownpourLib.baseName(filename) || undefined,
       referer: referer || undefined,
       user_agent: navigator.userAgent,
       cookie_header: cookieHeader || undefined,
@@ -87,13 +93,13 @@ async function handOff({ url, filename, referer }) {
 }
 
 async function takeOver({ url, filename, referer }) {
-  if (!eligible(url)) return;
+  if (!DownpourLib.eligible(url)) return;
   if (!(await engineOnline())) return;
   return handOff({ url, filename, referer });
 }
 
 chrome.downloads.onCreated.addListener(async (item) => {
-  if (!eligible(item.url)) return; // blob:/data: cannot be handed off
+  if (!DownpourLib.eligible(item.url)) return; // blob:/data: cannot be handed off
   if (!(await engineOnline())) return; // leave normal browser downloads alone
   chrome.downloads.cancel(item.id, () => chrome.downloads.erase({ id: item.id }));
   await handOff({
@@ -103,13 +109,11 @@ chrome.downloads.onCreated.addListener(async (item) => {
   });
 });
 
-const MEDIA_PATTERN = /\.(m3u8|mpd)(\?|#|$)/i;
-
 // Observational sniffing: remember the last manifest URL per tab so the
 // context menu can hand it over even when the player loaded it in script.
 chrome.webRequest.onBeforeRequest.addListener(
   (details) => {
-    if (details.tabId < 0 || !MEDIA_PATTERN.test(details.url)) return;
+    if (details.tabId < 0 || !DownpourLib.isMediaUrl(details.url)) return;
     chrome.storage.session.set({ [`media:${details.tabId}`]: details.url });
   },
   { urls: ["<all_urls>"] },

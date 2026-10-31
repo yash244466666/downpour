@@ -9,7 +9,7 @@ Status as of 2026-10-31.
 | **M2** | Multi-connection transfers, dynamic segmentation, throttle, retries, kill-9 crash tests | ✅ complete |
 | **M3** | Full desktop UI wired to the engine: table, settings, tray, notifications | ✅ complete |
 | **M4** | Queue, priorities, category filters, scheduler, autostart, single-instance | ✅ complete |
-| **M5** | IPC server/client, native-messaging host, Chromium/Edge extension takeover | ✅ complete |
+| **M5** | IPC server/client, native-messaging host, Chromium/Edge and Firefox extension takeover | ✅ complete |
 | **M6** | yt-dlp integration, media detection UI, HLS fallback | ✅ complete |
 | **M7** | Site grabber + batch import/expansion | ✅ complete |
 | **M8** | Packaging: deb/AppImage/NSIS/DMG, release workflow, signing hooks | ✅ complete |
@@ -91,7 +91,13 @@ Concurrency across downloads is **not** part of M2; it lands with the queue.
       cookies, referer, and user agent; blob:/data: URLs are left alone.
 - [x] End-to-end verified: native host → IPC → engine add/list completed an
       8 MiB download; cookies were not persisted to SQLite.
-- [ ] Firefox/Safari extensions — not shipped.
+- [x] Chromium MV3 build re-verified end to end in Brave 156 after the
+      shared-source refactor (download cancelled, byte-identical file).
+- [x] Firefox MV3 extension — shares the Chromium sources and native host;
+      verified end to end in Firefox 158 (download cancelled, byte-identical
+      file completed through the engine). Unsigned installs are temporary until
+      AMO signing exists.
+- [ ] Safari extension — not shipped (needs macOS and Xcode).
 
 ## Definition of done for M6
 
@@ -144,6 +150,9 @@ Concurrency across downloads is **not** part of M2; it lands with the queue.
 
 ## Releases
 
+- **v0.2.0** (2026-10-31) — Firefox download take-over; shared extension source
+  tree with per-browser builds; extension zips on the same GitHub release;
+  host/extension protocol gate; Firefox native-host registration and `doctor`.
 - **v0.1.0** (2026-10-31) — first release.
 - **v0.1.1** — superseded before publication; its file-manager fix shipped in
   v0.1.2.
@@ -157,7 +166,7 @@ Concurrency across downloads is **not** part of M2; it lands with the queue.
 - Signed/notarized release builds (credentials required).
 - Updater channel, signing key, and `latest.json` publication.
 - Managed yt-dlp download with pinned SHA-256; HLS quality selection.
-- Firefox and Safari extensions; grabber UI.
+- Safari extension; grabber UI.
 - Bengali localization and a full string table.
 - Dialog focus traps and automated axe/WCAG checks.
 - Optional `cargo deny`/`cargo audit` CI once license/advisory policy is set.
@@ -165,5 +174,5 @@ Concurrency across downloads is **not** part of M2; it lands with the queue.
 ## Lean MVP cut line
 
 If schedule pressure appears: M0–M5 Chromium-only + M6 yt-dlp-only. Defer the
-grabber, scheduler, Firefox/Edge, native DASH, and i18n. That is still a credible
+grabber, scheduler, Safari, native DASH, and i18n. That is still a credible
 IDM-class v1.

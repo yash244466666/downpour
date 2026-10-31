@@ -51,6 +51,22 @@ jobs:
       - name: Test
         run: cargo test --workspace
 
+  extensions:
+    name: Extensions
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate and build
+        run: node extensions/browser/build.mjs --check
+
+      - name: Test
+        run: node --test extensions/browser/test/*.test.mjs
+
   frontend:
     name: Frontend
     runs-on: ubuntu-22.04

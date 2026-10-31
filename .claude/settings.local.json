@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "includeCoAuthoredBy": false,
+    "allow": [],
+    "deny": []
+  },
+  "enabledMcpjsonServers": []
+}

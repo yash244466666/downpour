@@ -6,6 +6,7 @@ export type DemoDownload = DownloadRow;
 export const initialDownloads: DemoDownload[] = [
   {
     id: "d1",
+    url: "https://releases.ubuntu.com/24.04/ubuntu-24.04.3-desktop-amd64.iso",
     name: "ubuntu-24.04.3-desktop-amd64.iso",
     host: "releases.ubuntu.com",
     kind: "app",
@@ -19,6 +20,7 @@ export const initialDownloads: DemoDownload[] = [
   },
   {
     id: "d2",
+    url: "https://cdn.mediaarchive.org/sundarbans-4k-documentary.mp4",
     name: "sundarbans-4k-documentary.mp4",
     host: "cdn.mediaarchive.org",
     kind: "video",
@@ -32,6 +34,7 @@ export const initialDownloads: DemoDownload[] = [
   },
   {
     id: "d3",
+    url: "https://github.com/yash244466666/downpour/releases/download/v0.3.2/downpour-design-system.zip",
     name: "downpour-design-system.zip",
     host: "github.com",
     kind: "archive",
@@ -44,6 +47,7 @@ export const initialDownloads: DemoDownload[] = [
   },
   {
     id: "d4",
+    url: "https://files.example.org/annual-report-2026.pdf",
     name: "annual-report-2026.pdf",
     host: "files.example.org",
     kind: "document",
@@ -56,6 +60,7 @@ export const initialDownloads: DemoDownload[] = [
   },
   {
     id: "d5",
+    url: "https://nodejs.org/dist/v24.22.2/node-v24.22.2-linux-x64.tar.xz",
     name: "node-v24.22.2-linux-x64.tar.xz",
     host: "nodejs.org",
     kind: "archive",
@@ -68,6 +73,7 @@ export const initialDownloads: DemoDownload[] = [
   },
   {
     id: "d6",
+    url: "https://audio.example.net/bengali-typing-practice.mp3",
     name: "bengali-typing-practice.mp3",
     host: "audio.example.net",
     kind: "audio",
@@ -80,6 +86,7 @@ export const initialDownloads: DemoDownload[] = [
   },
   {
     id: "d7",
+    url: "https://mirror.manjaro.org/iso/manjaro-kde-26.0.iso",
     name: "manjaro-kde-26.0.iso",
     host: "mirror.manjaro.org",
     kind: "app",
@@ -92,6 +99,7 @@ export const initialDownloads: DemoDownload[] = [
   },
   {
     id: "d8",
+    url: "https://archive.example.com/sundarbans-photo-pack.7z",
     name: "sundarbans-photo-pack.7z",
     host: "archive.example.com",
     kind: "image",

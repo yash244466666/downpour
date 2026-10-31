@@ -4,6 +4,7 @@ import {
   Archive,
   ArrowDown,
   ArrowUp,
+  Copy,
   File,
   FileText,
   Film,
@@ -98,6 +99,7 @@ export function DownloadList({
   onCancel,
   onDelete,
   onReveal,
+  onCopy,
   onPriority,
   onStartAll,
   onPauseAll,
@@ -115,6 +117,7 @@ export function DownloadList({
   onCancel: (id: string) => void;
   onDelete: (download: DownloadRow) => void;
   onReveal: (download: DownloadRow) => void;
+  onCopy: (download: DownloadRow) => void;
   onPriority: (id: string, delta: number) => void;
   onStartAll: () => void;
   onPauseAll: () => void;
@@ -232,6 +235,7 @@ export function DownloadList({
               onCancel={onCancel}
               onDelete={onDelete}
               onReveal={onReveal}
+              onCopy={onCopy}
               onPriority={onPriority}
             />
           ))}
@@ -282,6 +286,7 @@ function DownloadRow({
   onCancel,
   onDelete,
   onReveal,
+  onCopy,
   onPriority,
 }: {
   download: DownloadRow;
@@ -289,6 +294,7 @@ function DownloadRow({
   onCancel: (id: string) => void;
   onDelete: (download: DownloadRow) => void;
   onReveal: (download: DownloadRow) => void;
+  onCopy: (download: DownloadRow) => void;
   onPriority: (id: string, delta: number) => void;
 }) {
   const kind = KIND_META[download.kind];
@@ -312,7 +318,7 @@ function DownloadRow({
     Boolean(download.finalPath || download.directory);
 
   return (
-    <div className="group grid grid-cols-1 gap-3 px-4 py-4 transition-colors hover:bg-surface-2/40 sm:px-5 md:grid-cols-[minmax(0,1.5fr)_minmax(170px,1fr)_120px_120px_122px] md:items-center md:gap-4">
+    <div className="group grid grid-cols-1 gap-3 px-4 py-4 transition-colors hover:bg-surface-2/40 sm:px-5 md:grid-cols-[minmax(0,1.5fr)_minmax(170px,1fr)_120px_120px_auto] md:items-center md:gap-4">
       <div className="flex min-w-0 items-center gap-3">
         <div
           className={cn(
@@ -398,6 +404,13 @@ function DownloadRow({
 
       <div className="flex items-center justify-between md:justify-end md:gap-1">
         <div className="flex items-center gap-1">
+          <RowButton
+            label="Copy download link"
+            disabled={!download.url}
+            onClick={() => onCopy(download)}
+          >
+            <Copy className="h-4 w-4" />
+          </RowButton>
           {download.status === "queued" && (
             <>
               <RowButton

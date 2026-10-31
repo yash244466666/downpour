@@ -19,6 +19,7 @@ export type DownloadStatus =
 
 export interface DownloadRow {
   id: string;
+  url: string;
   name: string;
   host: string;
   kind: DownloadKind;
@@ -111,6 +112,7 @@ export function rowFromEngine(
 
   return {
     id: record.id,
+    url: record.url,
     name: record.name,
     host: hostFromUrl(record.url),
     kind: guessKind(record.name),

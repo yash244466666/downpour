@@ -48,6 +48,7 @@ describe("hostFromUrl", () => {
 describe("rowFromEngine", () => {
   it("maps engine fields to the table row", () => {
     const row = rowFromEngine(base, 1_700_000_120_000);
+    expect(row.url).toBe(base.url);
     expect(row.name).toBe("report.pdf");
     expect(row.kind).toBe("document");
     expect(row.host).toBe("example.com");

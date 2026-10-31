@@ -5,7 +5,7 @@
 1. Bump `version` in `apps/desktop/src-tauri/tauri.conf.json` and the
    workspace `Cargo.toml` `[workspace.package] version`.
 2. Merge everything into `dev`, then move `main` onto `dev`.
-3. Tag the release: `git tag v0.3.2 && git push origin v0.3.2`.
+3. Tag the release: `git tag v0.3.3 && git push origin v0.3.3`.
 
 The `Release` workflow builds on Ubuntu, Windows, and macOS (universal), and
 opens a **draft** GitHub release with the installers, `downpour` and
@@ -116,6 +116,8 @@ installers. After installing:
 
 ## Release history
 
+- **v0.3.3** (2026-11-01) — copy download link button on every row; copies the
+  exact source URL and confirms with a toast.
 - **v0.3.2** (2026-10-31) — fix Check now hanging on “Checking…” when the
   updater plugin is absent; the plugin call is guarded and a client-side
   timeout keeps the button responsive.

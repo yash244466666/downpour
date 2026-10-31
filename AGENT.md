@@ -43,8 +43,8 @@ document relevant to your area.
 
 ## 2. Branch and commit protocol
 
-- `dev` is the default and integration branch; `main` is release-only and
-  pulls from `dev`. Both are protected: PRs only, no force pushes/deletions.
+- `dev` is the integration branch; `main` is the default and release branch
+  and pulls from `dev`. Both are protected: PRs only, no force pushes/deletions.
 - Never develop on `main`.
 - Create `feat/<slug>`, `fix/<slug>`, `docs/<slug>`, or `chore/<slug>` from the
   latest `dev`.

@@ -342,11 +342,11 @@ reserved), dialogs focus trap, automated axe/CSP hardening.
 
 ## 12. Branching and releases
 
-- **`dev` is the default branch.** All feature work branches from `dev` and
-  merges back via PR.
-- **`main` is release-only and pulls from `dev`.** Local `main` is configured to
-  track `origin/dev`, so `git pull` on `main` brings dev's changes. Do not
-  develop on `main`; do not force-push either branch.
+- **`main` is the default and release branch.** Releases are tagged here.
+- **`dev` is the integration branch.** All feature work branches from `dev` and
+  merges back via PR. Local `main` tracks `origin/dev`, so `git pull` on `main`
+  brings dev's changes before a release. Do not develop on `main`; do not
+  force-push either branch.
 - Both `dev` and `main` are protected: PRs only, no force pushes, no deletion.
   Direct pushes fail for everyone, including the owner; only the owner has the
   write access needed to merge.

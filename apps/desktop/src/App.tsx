@@ -19,6 +19,7 @@ import * as engine from "./lib/engine";
 import type { MediaTools, Settings } from "./lib/engine";
 import { fileNameFromUrl, guessKind } from "./lib/format";
 import { filterDownloads, type Filter } from "./lib/filters";
+import { useSpeedHistory } from "./lib/speedHistory";
 import { useTheme } from "./lib/theme";
 
 const FALLBACK_SETTINGS: Settings = {
@@ -143,6 +144,8 @@ export default function App() {
         .reduce((total, item) => total + item.speed, 0),
     [downloads],
   );
+
+  const speedHistory = useSpeedHistory(totalSpeed);
 
   async function addDownload(
     url: string,
@@ -388,6 +391,7 @@ export default function App() {
         category={category}
         onCategory={setCategory}
         totalSpeed={totalSpeed}
+        speedHistory={speedHistory}
         preview={preview}
         onOpenFolder={() => {
           void (async () => {
@@ -434,7 +438,7 @@ export default function App() {
                 </button>
               </div>
             )}
-            <SummaryCards downloads={downloads} />
+            <SummaryCards downloads={downloads} speedHistory={speedHistory} />
             <DownloadList
               downloads={visible}
               total={downloads.length}

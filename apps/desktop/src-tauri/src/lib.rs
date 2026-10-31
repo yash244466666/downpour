@@ -598,28 +598,136 @@ fn scheduler_tick(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
-async fn reveal_path(path: String) -> Result<(), String> {
-    let path = PathBuf::from(path);
-    let target = if path.is_dir() && path.exists() {
-        path
+fn expand_tilde(value: &str) -> PathBuf {
+    if value == "~" {
+        return std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(value));
+    }
+    if let Some(rest) = value.strip_prefix("~/") {
+        if let Some(home) = std::env::var_os("HOME") {
+            return PathBuf::from(home).join(rest);
+        }
+    }
+    PathBuf::from(value)
+}
+
+/// Command for a system helper.
+///
+/// AppImages prepend their mount to `PATH` and set `LD_LIBRARY_PATH` (plus
+/// toolkit paths) to their bundled libraries. Running `xdg-open`/`gio` with
+/// those variables makes the system opener load the AppImage's libraries and
+/// fail silently, so they are stripped here.
+fn system_command(program: &str) -> std::process::Command {
+    let mut command = std::process::Command::new(program);
+    for variable in [
+        "LD_LIBRARY_PATH",
+        "LD_PRELOAD",
+        "GIO_MODULE_DIR",
+        "GTK_PATH",
+        "GDK_PIXBUF_MODULE_FILE",
+        "GSETTINGS_SCHEMA_DIR",
+    ] {
+        command.env_remove(variable);
+    }
+    command
+}
+
+#[cfg(target_os = "linux")]
+fn reveal_in_file_manager(path: &Path) -> Result<(), String> {
+    // 1. The freedesktop file-manager interface selects the file (or opens the
+    //    folder) reliably under Nemo, Nautilus, Dolphin, Thunar, and PCManFM.
+    if let Ok(uri) = url::Url::from_file_path(path) {
+        let argument = format!("array:string:{uri}");
+        let status = system_command("dbus-send")
+            .args([
+                "--session",
+                "--dest=org.freedesktop.FileManager1",
+                "--type=method_call",
+                "/org/freedesktop/FileManager1",
+                "org.freedesktop.FileManager1.ShowItems",
+                &argument,
+                "string:",
+            ])
+            .status();
+        if matches!(status, Ok(status) if status.success()) {
+            return Ok(());
+        }
+    }
+
+    // 2. Fall back to opening the containing folder.
+    let target = if path.is_dir() {
+        path.to_path_buf()
     } else {
         path.parent()
             .map(Path::to_path_buf)
-            .unwrap_or_else(|| PathBuf::from("."))
+            .unwrap_or_else(|| path.to_path_buf())
     };
-    if !target.exists() {
-        return Err(format!("{} does not exist yet", target.display()));
+    let target = target.to_string_lossy().into_owned();
+    let mut last_error = None;
+    for (program, args) in [
+        ("gio", vec!["open".to_owned(), target.clone()]),
+        ("xdg-open", vec![target.clone()]),
+    ] {
+        match system_command(program).args(&args).status() {
+            Ok(status) if status.success() => return Ok(()),
+            Ok(status) => last_error = Some(format!("{program} exited with {status}")),
+            Err(error) => last_error = Some(format!("{program}: {error}")),
+        }
     }
+    Err(last_error.unwrap_or_else(|| "no file manager is available".to_owned()))
+}
 
-    let spawn = if cfg!(target_os = "windows") {
-        std::process::Command::new("explorer").arg(&target).spawn()
-    } else if cfg!(target_os = "macos") {
-        std::process::Command::new("open").arg(&target).spawn()
+#[cfg(target_os = "macos")]
+fn reveal_in_file_manager(path: &Path) -> Result<(), String> {
+    let mut command = system_command("open");
+    if !path.is_dir() {
+        command.arg("-R");
+    }
+    command
+        .arg(path)
+        .status()
+        .map_err(|error| error.to_string())
+        .and_then(|status| {
+            if status.success() {
+                Ok(())
+            } else {
+                Err(format!("open exited with {status}"))
+            }
+        })
+}
+
+#[cfg(target_os = "windows")]
+fn reveal_in_file_manager(path: &Path) -> Result<(), String> {
+    let mut command = system_command("explorer");
+    if path.is_dir() {
+        command.arg(path);
     } else {
-        std::process::Command::new("xdg-open").arg(&target).spawn()
+        command.arg(format!("/select,{}", path.display()));
+    }
+    // Explorer commonly exits non-zero even when it opens the window.
+    command
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+fn reveal_in_file_manager(_path: &Path) -> Result<(), String> {
+    Err("revealing files is not supported on this platform".to_owned())
+}
+
+#[tauri::command]
+async fn reveal_path(path: String) -> Result<(), String> {
+    let path = expand_tilde(&path);
+    let target = if path.exists() {
+        path
+    } else if let Some(parent) = path.parent().filter(|parent| parent.exists()) {
+        parent.to_path_buf()
+    } else {
+        return Err(format!("{} does not exist yet", path.display()));
     };
-    spawn.map(|_| ()).map_err(|error| error.to_string())
+    reveal_in_file_manager(&target)
 }
 
 fn start_run(app: &AppHandle, id: &str) -> Result<(), String> {

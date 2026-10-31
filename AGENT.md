@@ -9,11 +9,11 @@
 Ship Downpour milestone by milestone. Each milestone must leave the repository
 gate-clean and honest about what works.
 
-- **Current:** v0.1.2 released (2026-10-31). All milestones M0–M9 are done;
+- **Current:** v0.2.0 released (2026-10-31). All milestones M0–M9 are done;
   the repo is public, `main` is the default/release branch, and both `main`
   and `dev` are protected (PRs only).
 - **Next:** the post-v1 backlog (see `docs/roadmap.md`): signed releases,
-  updater channel, managed yt-dlp, quality selection, Firefox/Safari,
+  updater channel, managed yt-dlp, quality selection, Safari extension,
   grabber UI, Bengali localization.
 - **Not implemented:** those backlog items plus dialog focus trapping and
   automated accessibility checks. Do not claim otherwise in code, docs,

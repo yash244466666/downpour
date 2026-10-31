@@ -28,7 +28,7 @@ extensions, the grabber UI, and Bengali localization. The repo is public;
 | Crash testing | Engine restart tests + a real SIGKILL CLI test (Unix) |
 | IPC server/client | Local socket, token auth, add/list/pause/resume/cancel/remove |
 | Native host | Validates browser argv, forwards to IPC, auto-launches the app |
-| Browser extension | Chromium/Edge MV3 take-over + context menu |
+| Browser extension | Chromium/Edge and Firefox MV3 take-over + context menu |
 | CLI | `add`, `get`, `run`, `list`, `info`, `pause`, `cancel`, `version` work |
 | Desktop UI | **Live** dashboard; settings, tray, notifications, categories |
 | Queue / scheduler | Concurrency + per-host caps, priorities, schedule window |
@@ -105,7 +105,7 @@ downpour/
 │  └─ desktop/                 Tauri 2 app + React dashboard
 │     ├─ src/                  React 19 + Vite + Tailwind sources
 │     └─ src-tauri/            Rust shell, tauri.conf.json, capabilities
-├─ extensions/browser/         planned WXT extension (empty)
+├─ extensions/browser/         shared MV3 sources + Chromium/Firefox builds
 ├─ docs/                       architecture, protocol, ADRs, roadmap, assets
 └─ .github/workflows/ci.yml    3-OS Rust gates + frontend gates
 ```
@@ -146,6 +146,10 @@ pnpm --dir apps/desktop dev                  # browser preview, mock data
 pnpm --dir apps/desktop typecheck
 pnpm --dir apps/desktop build
 pnpm tauri dev                               # real Tauri window (needs DISPLAY)
+
+# Browser extensions (no npm dependencies)
+node extensions/browser/build.mjs --check    # validate + assemble dist/
+node --test extensions/browser/test/*.test.mjs
 
 # CLI (engine runs in-process in M1)
 cargo run -p downpour-cli -- version
@@ -312,9 +316,9 @@ single-instance. The updater is deferred to M8, where release signing keys
 exist; the updater UI is not shipped yet.
 
 **M5 exit criteria (met):** a local IPC server/client with token auth, the
-native-messaging host registered by the CLI, and a Chromium/Edge extension that
-takes over downloads and hands over cookies, referer, and user agent. Firefox
-and Safari extensions are not shipped.
+native-messaging host registered by the CLI, and Chromium/Edge and Firefox
+extensions that take over downloads and hand over cookies, referer, and user
+agent. The Safari extension is not shipped.
 
 **M6 exit criteria (met):** media URLs are detected (HLS/DASH/progressive),
 yt-dlp is detected and runs with cookie handoff, and the built-in HLS fallback
@@ -338,8 +342,8 @@ reduced motion, accessibility notes, troubleshooting/release docs, and an
 honest list of remaining gaps (i18n deferred).
 
 **Post-v1 backlog:** signed/notarized releases, updater channel/keys, managed
-yt-dlp download with pinned hashes, HLS quality selection, Firefox/Safari
-extensions, grabber UI, Bengali localization (the `ui.language` setting is
+yt-dlp download with pinned hashes, HLS quality selection, Safari extension,
+grabber UI, Bengali localization (the `ui.language` setting is
 reserved), dialogs focus trap, automated axe/CSP hardening.
 
 ## 12. Branching and releases
@@ -375,9 +379,11 @@ the grabber:
 
 ## 14. Known traps
 
-- `extensions/browser/chromium` is plain MV3 JavaScript, not a pnpm project;
+- `extensions/browser` is plain MV3 JavaScript, not a pnpm project;
   `pnpm-workspace.yaml` still lists `extensions/browser` and pnpm tolerates the
-  missing `package.json`. Firefox/Safari loaders are not shipped.
+  missing `package.json`. Load unpacked from `extensions/browser/dist/<browser>`
+  (build first); the checked-in manifests are unstamped sources. The Safari
+  loader is not shipped.
 - Tauri capability schema (`apps/desktop/src-tauri/gen/schemas/...`) is generated
   at build time and gitignored; editors may show it as missing until first build.
 - `pnpm tauri dev` requires a display; CI runs `cargo check/test` only.
@@ -393,7 +399,12 @@ the grabber:
 - Browser cookies and handoff headers are ephemeral (in-memory only). Never
   persist them; the SQLite `headers_enc` keyring path is still TODO.
 - The Chromium extension ID (`CHROME_EXTENSION_ID` in the CLI) must match the
-  `key` in `extensions/browser/chromium/manifest.json`.
+  `key` in `extensions/browser/chromium/manifest.json`; the Firefox add-on ID
+  (`FIREFOX_EXTENSION_ID`) must match the manifest's gecko id. Both are
+  registered by `downpour register-browsers` and are permanent.
+- Extension manifests carry the `0.0.0` placeholder in the repository; the
+  build stamps the app version. `docs/release.md` lists the four version bumps,
+  not six.
 - Media jobs update the same `downloads` rows but are not engine transfers:
   pausing kills the process and resuming restarts it from zero. HLS/DASH URLs
   are routed by `queue_add`; DASH needs yt-dlp. `DOWNPOUR_DISABLE_YTDLP=1`

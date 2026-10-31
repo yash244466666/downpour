@@ -8,8 +8,11 @@
 3. Tag the release: `git tag v0.2.0 && git push origin v0.2.0`.
 
 The `Release` workflow builds on Ubuntu, Windows, and macOS (universal), and
-opens a **draft** GitHub release with the installers plus `downpour` and
-`downpour-nm-host` binaries.
+opens a **draft** GitHub release with the installers, `downpour` and
+`downpour-nm-host` binaries, and the browser extension packages
+(`downpour-chromium-<version>.zip`, `downpour-firefox-<version>.zip`). The
+extension packages are built from `extensions/browser/build.mjs` and stamped
+with this version, so there is nothing extra to bump by hand.
 
 ## Version bumps
 
@@ -22,13 +25,18 @@ Bump the version in all four places before tagging:
 
 Then run `cargo check --workspace` to refresh `Cargo.lock`.
 
+The browser extension manifests are not a fifth place: `build.mjs` stamps
+their version from `tauri.conf.json` when it assembles `dist/`. Keep the
+checked-in manifests at the `0.0.0` placeholder.
+
 ## Artifact rules
 
 The release workflow uploads **only** installers (`.deb`, `.AppImage`, NSIS
-`.exe`, `.dmg`) and the staged `downpour` / `downpour-nm-host` binaries. Never
-upload the whole `bundle/` directory: the AppImage `AppDir` contains hundreds of
-runtime shared libraries, which previously polluted a release and failed the
-upload step.
+`.exe`, `.dmg`), the staged `downpour` / `downpour-nm-host` binaries, and the
+packaged extension zips. Never upload the whole `bundle/` directory: the
+AppImage `AppDir` contains hundreds of runtime shared libraries, which
+previously polluted a release and failed the upload step. Never upload
+`extensions/browser/dist/` itself; only the zips built from it.
 
 ## Local build
 

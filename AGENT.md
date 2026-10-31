@@ -9,8 +9,9 @@
 Ship Downpour milestone by milestone. Each milestone must leave the repository
 gate-clean and honest about what works.
 
-- **Current:** M9 complete (2026-10-31). `downpour doctor`, accessibility
-  improvements, troubleshooting/release/accessibility docs.
+- **Current:** v0.1.2 released (2026-10-31). All milestones M0–M9 are done;
+  the repo is public, `main` is the default/release branch, and both `main`
+  and `dev` are protected (PRs only).
 - **Next:** the post-v1 backlog (see `docs/roadmap.md`): signed releases,
   updater channel, managed yt-dlp, quality selection, Firefox/Safari,
   grabber UI, Bengali localization.
@@ -44,8 +45,10 @@ document relevant to your area.
 ## 2. Branch and commit protocol
 
 - `dev` is the integration branch; `main` is the default and release branch
-  and pulls from `dev`. Both are protected: PRs only, no force pushes/deletions.
-- Never develop on `main`.
+  and pulls from `dev`. Both are protected: PRs only, no force pushes or
+  deletions, even for the owner. Feature work goes through a PR into `dev`.
+- Never develop on `main`. Releases are tagged on `main`; see
+  `docs/release.md`.
 - Create `feat/<slug>`, `fix/<slug>`, `docs/<slug>`, or `chore/<slug>` from the
   latest `dev`.
 - Open a PR into `dev`. Do not merge your own PR unless the task explicitly says

@@ -87,18 +87,27 @@ The queue lives in SQLite (`downloads.priority`, `status`). The desktop app
 runs a scheduler tick every 1.5 s: it starts `queued` downloads in priority
 order while respecting the global concurrency limit and a per-host cap, and
 pauses running transfers outside the configured start/stop window. Paused rows
-are never auto-started, so an explicit user pause wins. The CLI runs its queue
+are never auto-started, so an explicit user pause wins. Bulk imports insert all
+URLs with one engine and then tick the scheduler once; media URLs discovered in
+the queue are routed to the media pipeline. The CLI runs its queue
 sequentially in one process.
 
 ### Desktop shell (M3)
 
-Tauri commands are thin: `list_downloads`, `add_download`, `start_download`,
-`pause_download`, `cancel_download`, `remove_download`, `get_settings`,
-`set_settings`, and `reveal_path`. Each command opens a short-lived engine with
-`Engine::open_without_recovery`; crash recovery runs exactly once at app
-startup. The webview polls the list at ~1 Hz and receives progress events for
-in-process transfers. A browser-only Vite preview keeps mock data and labels it
-"Preview data".
+Tauri commands are thin: `list_downloads`, `add_download`, `add_downloads`,
+`start_download`, `pause_download`, `cancel_download`, `remove_download`
+(`delete_file`), `clear_finished`, `get_settings`, `set_settings`,
+`reveal_path`, `expand_urls`, `get_media_tools`, and `check_for_updates`. Each
+command opens a short-lived engine with `Engine::open_without_recovery`; crash
+recovery runs exactly once at app startup. The webview polls the list at ~1 Hz
+and receives progress events for in-process transfers. A browser-only Vite
+preview keeps mock data and labels it "Preview data".
+
+`reveal_path` uses the freedesktop `FileManager1` interface on Linux with the
+AppImage library variables removed, `open -R` on macOS, and
+`explorer /select,` on Windows. Batch adds go through `add_downloads` so the
+scheduler enforces limits; `remove_download` keeps the file unless
+`delete_file` is set, and `clear_finished` never touches files.
 
 ### Crash safety
 

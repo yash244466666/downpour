@@ -6,18 +6,20 @@
 
 ![Downpour dashboard](docs/assets/dashboard.png)
 
-<sub>M4 dashboard — live queue with concurrency limits and priorities.</sub>
+<sub>Dashboard — live queue. The sidebar now shows Categories only.</sub>
 
 Downpour brings IDM-class downloading — segmented transfers, crash-safe resume,
 queues, browser take-over, and media grabbing — to all three desktop platforms
 with an open-source implementation and a modern interface.
 
-> **Status: M9 (hardening and docs).** Downloads work end to end — probe, 1–32
+> **Status: v0.1.2 (M9 complete).** Downloads work end to end — probe, 1–32
 > parallel connections, crash-safe resume, throttling, SHA-256 — with a live
 > dashboard, queue/scheduler, browser take-over, media handling, a robots-aware
 > CLI grabber, batch import, packaging, and diagnostics (`downpour doctor`).
 > Signed/notarized builds, a live update channel, and the Bengali translation
 > are the remaining gaps. See the [roadmap](docs/roadmap.md).
+>
+> **Latest release:** [v0.1.2](https://github.com/yash244466666/downpour/releases/tag/v0.1.2)
 
 ## Why Downpour
 
@@ -40,6 +42,8 @@ traditionally Windows-only, closed-source, and visually dated. Downpour is:
 - **Diagnostics**: `downpour doctor` checks the database, folders, media
   tools, IPC, and browser manifests. See
   [docs/troubleshooting.md](docs/troubleshooting.md).
+- **List controls**: clear finished downloads, remove from list vs delete the
+  file, and a "Showing X of Y · Show all" hint when filters hide rows.
 - **Accessibility**: visible keyboard focus, reduced-motion support, labelled
   dialogs/progress bars, accessible toggles. See
   [docs/accessibility.md](docs/accessibility.md).
@@ -275,7 +279,7 @@ with deterministic byte patterns — no public-internet tests. Crash tests kill 
 CLI process at random offsets and compare SHA-256 against the source once the
 engine lands.
 
-Current state: **117 Rust tests and 20 frontend unit tests pass**, clippy is
+Current state: **119 Rust tests and 20 frontend unit tests pass**, clippy is
 warning-free, and the frontend typechecks and builds. Engine tests cover byte-exact transfers, segmented
 concurrency, throttling, pause/resume, engine restarts, a real SIGKILL resume,
 ETag/content changes, `429`, dropped connections, permanent truncation,
@@ -293,6 +297,14 @@ redirects, auth failures, and traversal filenames.
   repository owner can merge, and `main` mirrors `dev` at release time.
 - CI must be green before a PR merges.
 - Never force-push `dev` or `main`.
+
+## Releases
+
+- **v0.1.2** (2026-10-31) — AppImage file-manager fix; bulk batch import through
+  the scheduler; immediate list rows; hidden-filter hints; clear finished;
+  delete-file choice; sidebar shows Categories only; 2000-row list.
+- **v0.1.0** (2026-10-31) — first release. `v0.1.1` was superseded before
+  publication.
 
 ## Roadmap
 

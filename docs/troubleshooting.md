@@ -56,6 +56,33 @@ the browser handles them.
 - SAMPLE-AES/Widevine/PlayReady are refused by design (no DRM circumvention).
 - `DOWNPOUR_DISABLE_YTDLP=1` forces the built-in HLS path.
 
+## "Open download folder" does nothing
+
+Fixed in **v0.1.2**. The AppImage sets `LD_LIBRARY_PATH` to its bundled
+libraries, which broke the system `xdg-open`. v0.1.2 uses the freedesktop
+`FileManager1.ShowItems` call with the AppImage variables stripped (and falls
+back to `gio`/`xdg-open`). Update to v0.1.2 or newer.
+
+## Downloads are missing from the list
+
+Status tabs, the category filter, and search all hide rows. The toolbar shows
+**"Showing X of Y · Show all"** when that happens; click it to clear the
+filters. The list is capped at 2000 rows; **Clear** removes finished rows
+(files stay on disk). If the engine is unreachable, a red banner appears with a
+Retry button.
+
+## Batch import is slow or only some URLs were added
+
+Fixed in **v0.1.2**: batch import is one bulk request and the scheduler starts
+downloads within the concurrency/per-host limits. The toast reports the first
+error if some URLs were rejected. The dialog expands at most 500 URLs; split
+larger lists.
+
+## I removed a download; where did the file go?
+
+The trash action asks first: **Remove from list** keeps the file, **Delete
+file** removes it. **Clear** only removes finished rows from the list.
+
 ## Linux window is blank or glitchy
 
 Try:

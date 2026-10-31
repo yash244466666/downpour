@@ -54,7 +54,7 @@ may process concurrently but responses carry the id.
 | `download.pause` | `{ "id": "<uuid>" }` | `{ "ok": true }` |
 | `download.resume` | `{ "id": "<uuid>" }` | `{ "ok": true }` |
 | `download.cancel` | `{ "id": "<uuid>" }` | `{ "ok": true }` |
-| `download.remove` | `{ "id": "<uuid>" }` | `{ "ok": true }` |
+| `download.remove` | `{ "id": "<uuid>", "delete_file": false }` | `{ "ok": true }` |
 
 `cookie_header` is split into cookies and passed to the engine as ephemeral
 headers: they are used for this process only and never written to SQLite.

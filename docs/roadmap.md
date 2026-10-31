@@ -142,6 +142,16 @@ Concurrency across downloads is **not** part of M2; it lands with the queue.
 - [x] Troubleshooting, accessibility, and release docs.
 - [x] i18n status documented honestly (English-only; `ui.language` reserved).
 
+## Releases
+
+- **v0.1.0** (2026-10-31) — first release.
+- **v0.1.1** — superseded before publication; its file-manager fix shipped in
+  v0.1.2.
+- **v0.1.2** (2026-10-31) — AppImage file-manager fix (issues #21–#27 in the
+  same window): bulk batch import through the scheduler, immediate rows,
+  hidden-filter hints, clear finished, delete-file choice, categories-only
+  sidebar, and a 2000-row list cap.
+
 ## Post-v1 backlog
 
 - Signed/notarized release builds (credentials required).

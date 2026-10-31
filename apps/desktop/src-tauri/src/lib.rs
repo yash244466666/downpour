@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::Duration;
 
 use chrono::{Datelike, Timelike};
 use downpour_core::schedule::{parse_minutes, window_allows};
@@ -241,25 +242,43 @@ struct UpdateStatus {
     message: String,
 }
 
+const RELEASES_API: &str = "https://api.github.com/repos/yash244466666/downpour/releases/latest";
+const UPDATE_CHECK_TIMEOUT: Duration = Duration::from_secs(10);
+
 #[tauri::command]
 async fn check_for_updates(app: AppHandle) -> UpdateStatus {
     use tauri_plugin_updater::UpdaterExt;
 
-    let updater = match app.updater() {
-        Ok(updater) => updater,
-        Err(error) => {
-            return UpdateStatus {
-                configured: false,
-                version: None,
-                message: format!("Updates are not configured in this build: {error}"),
-            };
+    // A configured signed channel is authoritative. Without one (or when it
+    // fails), fall back to the public releases feed so "Check now" still
+    // reports whether a newer release exists.
+    if let Ok(updater) = app.updater() {
+        match updater.check().await {
+            Ok(Some(update)) => {
+                return UpdateStatus {
+                    configured: true,
+                    version: Some(update.version.clone()),
+                    message: format!("Version {} is available.", update.version),
+                };
+            }
+            Ok(None) => {
+                return UpdateStatus {
+                    configured: true,
+                    version: None,
+                    message: "You are on the latest version.".to_owned(),
+                };
+            }
+            Err(_) => {}
         }
-    };
-    match updater.check().await {
-        Ok(Some(update)) => UpdateStatus {
+    }
+
+    match latest_release_version().await {
+        Ok(Some(version)) => UpdateStatus {
             configured: true,
-            version: Some(update.version.clone()),
-            message: format!("Version {} is available.", update.version),
+            version: Some(version.clone()),
+            message: format!(
+                "Version {version} is available. Download it from the GitHub releases page."
+            ),
         },
         Ok(None) => UpdateStatus {
             configured: true,
@@ -269,9 +288,72 @@ async fn check_for_updates(app: AppHandle) -> UpdateStatus {
         Err(error) => UpdateStatus {
             configured: false,
             version: None,
-            message: format!("Update check failed: {error}"),
+            message: format!("Could not check for updates: {error}"),
         },
     }
+}
+
+/// Ask the public releases feed for the latest tag and compare it with this
+/// build. Returns the newer version, or `None` when this build is current.
+async fn latest_release_version() -> Result<Option<String>, String> {
+    let client = reqwest::Client::builder()
+        .timeout(UPDATE_CHECK_TIMEOUT)
+        .user_agent(format!("downpour/{}", env!("CARGO_PKG_VERSION")))
+        .build()
+        .map_err(|error| error.to_string())?;
+    let response = client
+        .get(RELEASES_API)
+        .header("Accept", "application/vnd.github+json")
+        .send()
+        .await
+        .map_err(|error| error.to_string())?;
+
+    if response.status() == reqwest::StatusCode::FORBIDDEN {
+        return Err("the GitHub API rate limit is exhausted; try again later".to_owned());
+    }
+    if !response.status().is_success() {
+        return Err(format!("GitHub returned HTTP {}", response.status()));
+    }
+
+    let body = response.text().await.map_err(|error| error.to_string())?;
+    let value: serde_json::Value =
+        serde_json::from_str(&body).map_err(|error| error.to_string())?;
+    let tag = value
+        .get("tag_name")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "the latest release has no tag".to_owned())?;
+
+    match is_newer(tag, env!("CARGO_PKG_VERSION")) {
+        Some(true) => Ok(Some(tag.trim_start_matches('v').to_owned())),
+        Some(false) => Ok(None),
+        None => Err(format!("unexpected release tag {tag}")),
+    }
+}
+
+/// Parse `v1.2.3`, `1.2.3`, or a pre-release suffix. Comparison is numeric;
+/// the releases feed does not offer pre-releases as "latest".
+fn parse_version(raw: &str) -> Option<(u64, u64, u64)> {
+    let trimmed = raw.trim();
+    let core = trimmed.strip_prefix('v').unwrap_or(trimmed);
+    let core = core.split(['-', '+']).next()?;
+
+    let mut numbers = [0_u64; 3];
+    let mut count = 0_usize;
+    for part in core.split('.') {
+        if part.is_empty() || count == numbers.len() {
+            return None;
+        }
+        numbers[count] = part.parse().ok()?;
+        count += 1;
+    }
+    if count == 0 {
+        return None;
+    }
+    Some((numbers[0], numbers[1], numbers[2]))
+}
+
+fn is_newer(latest: &str, current: &str) -> Option<bool> {
+    Some(parse_version(latest)? > parse_version(current)?)
 }
 
 #[tauri::command]
@@ -1275,4 +1357,29 @@ pub fn run() {
         ])
         .run(context)
         .expect("error while running Downpour");
+}
+
+#[cfg(test)]
+mod update_check_tests {
+    use super::{is_newer, parse_version};
+
+    #[test]
+    fn parses_release_tags() {
+        assert_eq!(parse_version("v0.3.0"), Some((0, 3, 0)));
+        assert_eq!(parse_version("1.2"), Some((1, 2, 0)));
+        assert_eq!(parse_version("0.4.0-rc.1"), Some((0, 4, 0)));
+        assert_eq!(parse_version("0.4.0+build.7"), Some((0, 4, 0)));
+        assert_eq!(parse_version("nope"), None);
+        assert_eq!(parse_version("1.2.3.4"), None);
+        assert_eq!(parse_version(""), None);
+    }
+
+    #[test]
+    fn compares_versions() {
+        assert_eq!(is_newer("v0.4.0", "0.3.0"), Some(true));
+        assert_eq!(is_newer("v0.3.0", "0.3.0"), Some(false));
+        assert_eq!(is_newer("v0.2.9", "0.3.0"), Some(false));
+        assert_eq!(is_newer("0.10.0", "0.9.9"), Some(true));
+        assert_eq!(is_newer("bad", "0.3.0"), None);
+    }
 }

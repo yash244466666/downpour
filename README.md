@@ -12,7 +12,7 @@ Downpour brings IDM-class downloading — segmented transfers, crash-safe resume
 queues, browser take-over, and media grabbing — to all three desktop platforms
 with an open-source implementation and a modern interface.
 
-> **Status: v0.3.2 (M9 complete).** Downloads work end to end — probe, 1–32
+> **Status: v0.3.3 (M9 complete).** Downloads work end to end — probe, 1–32
 > parallel connections, crash-safe resume, throttling, SHA-256 — with a live
 > dashboard, queue/scheduler, browser take-over on Chromium, Edge, and Firefox,
 > media handling, a robots-aware CLI grabber, batch import, packaging, and
@@ -20,7 +20,7 @@ with an open-source implementation and a modern interface.
 > channel, the Safari extension, and the Bengali translation are the remaining
 > gaps. See the [roadmap](docs/roadmap.md).
 >
-> **Latest release:** [v0.3.2](https://github.com/yash244466666/downpour/releases/tag/v0.3.2)
+> **Latest release:** [v0.3.3](https://github.com/yash244466666/downpour/releases/tag/v0.3.3)
 
 ## Why Downpour
 
@@ -305,6 +305,8 @@ redirects, auth failures, and traversal filenames.
 
 ## Releases
 
+- **v0.3.3** (2026-11-01) — copy download link button on every row; copies the
+  exact source URL and confirms with a toast.
 - **v0.3.2** (2026-10-31) — fix Check now hanging on “Checking…” when the
   updater plugin is absent; the plugin call is guarded and a client-side
   timeout keeps the button responsive.

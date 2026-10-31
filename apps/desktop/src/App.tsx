@@ -18,6 +18,7 @@ import {
 import * as engine from "./lib/engine";
 import type { MediaTools, Settings } from "./lib/engine";
 import { fileNameFromUrl, guessKind } from "./lib/format";
+import { copyText } from "./lib/clipboard";
 import { filterDownloads, type Filter } from "./lib/filters";
 import { useSpeedHistory } from "./lib/speedHistory";
 import { useTheme } from "./lib/theme";
@@ -40,6 +41,7 @@ function mockRow(url: string, connections: number): DemoDownload {
   const name = fileNameFromUrl(url);
   return {
     id: crypto.randomUUID(),
+    url,
     name,
     host: (() => {
       try {
@@ -272,6 +274,17 @@ export default function App() {
     }
   }
 
+  async function copyDownloadLink(download: DownloadRow) {
+    try {
+      await copyText(download.url);
+      setToast("Download link copied.");
+    } catch (error) {
+      setToast(
+        error instanceof Error ? error.message : "Could not copy the link.",
+      );
+    }
+  }
+
   async function revealDownload(download: DownloadRow) {
     const target =
       download.finalPath ?? download.directory ?? settings.downloadDir;
@@ -449,6 +462,7 @@ export default function App() {
               onCancel={(id) => void cancelDownload(id)}
               onDelete={(download) => setDeleteTarget(download)}
               onReveal={(download) => void revealDownload(download)}
+              onCopy={(download) => void copyDownloadLink(download)}
               onPriority={(id, delta) => void changePriority(id, delta)}
               onStartAll={() => void startAll()}
               onPauseAll={() => void pauseAll()}

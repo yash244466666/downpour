@@ -5,7 +5,7 @@
 1. Bump `version` in `apps/desktop/src-tauri/tauri.conf.json` and the
    workspace `Cargo.toml` `[workspace.package] version`.
 2. Merge everything into `dev`, then move `main` onto `dev`.
-3. Tag the release: `git tag v0.2.0 && git push origin v0.2.0`.
+3. Tag the release: `git tag v0.3.0 && git push origin v0.3.0`.
 
 The `Release` workflow builds on Ubuntu, Windows, and macOS (universal), and
 opens a **draft** GitHub release with the installers, `downpour` and
@@ -113,6 +113,9 @@ installers. After installing:
 
 ## Release history
 
+- **v0.3.0** (2026-10-31) — live speed graph: the Total speed card and the
+  sidebar throughput sparkline share a rolling 72-second history instead of
+  hardcoded arrays.
 - **v0.2.0** (2026-10-31) — Firefox download take-over; shared extension source
   tree with per-browser builds; extension zips attached to the same GitHub
   release; host/extension protocol gate; Firefox native-host registration and

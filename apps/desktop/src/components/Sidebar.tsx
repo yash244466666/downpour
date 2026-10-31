@@ -34,6 +34,7 @@ export function Sidebar({
   category,
   onCategory,
   totalSpeed,
+  speedHistory,
   preview,
   onOpenFolder,
 }: {
@@ -41,6 +42,7 @@ export function Sidebar({
   category: DownloadKind | null;
   onCategory: (kind: DownloadKind | null) => void;
   totalSpeed: number;
+  speedHistory: number[];
   preview: boolean;
   onOpenFolder: () => void;
 }) {
@@ -108,10 +110,7 @@ export function Sidebar({
           <div className="mt-1.5 text-lg font-semibold tabular-nums">
             {formatSpeed(totalSpeed)}
           </div>
-          <Sparkline
-            values={[8, 14, 11, 18, 16, 24, 21, 29, 26, 34, 31, 38]}
-            className="mt-2 h-8 w-full"
-          />
+          <Sparkline values={speedHistory} className="mt-2 h-8 w-full" />
         </div>
         <button
           type="button"

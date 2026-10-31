@@ -150,6 +150,9 @@ Concurrency across downloads is **not** part of M2; it lands with the queue.
 
 ## Releases
 
+- **v0.3.0** (2026-10-31) — live speed graph: the Total speed card and the
+  sidebar throughput sparkline share a rolling 72-second history instead of
+  hardcoded arrays.
 - **v0.2.0** (2026-10-31) — Firefox download take-over; shared extension source
   tree with per-browser builds; extension zips on the same GitHub release;
   host/extension protocol gate; Firefox native-host registration and `doctor`.

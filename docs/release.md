@@ -113,6 +113,10 @@ installers. After installing:
 
 ## Release history
 
+- **v0.2.0** (2026-10-31) — Firefox download take-over; shared extension source
+  tree with per-browser builds; extension zips attached to the same GitHub
+  release; host/extension protocol gate; Firefox native-host registration and
+  `doctor` coverage.
 - **v0.1.2** (2026-10-31) — file-manager reveal fix for AppImages; bulk batch
   through the scheduler; immediate list rows; hidden-filter hints; clear
   finished; delete-file choice; categories-only sidebar; 2000-row list.

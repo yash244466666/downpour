@@ -12,14 +12,15 @@ Downpour brings IDM-class downloading — segmented transfers, crash-safe resume
 queues, browser take-over, and media grabbing — to all three desktop platforms
 with an open-source implementation and a modern interface.
 
-> **Status: v0.1.2 (M9 complete).** Downloads work end to end — probe, 1–32
+> **Status: v0.2.0 (M9 complete).** Downloads work end to end — probe, 1–32
 > parallel connections, crash-safe resume, throttling, SHA-256 — with a live
-> dashboard, queue/scheduler, browser take-over, media handling, a robots-aware
-> CLI grabber, batch import, packaging, and diagnostics (`downpour doctor`).
-> Signed/notarized builds, a live update channel, and the Bengali translation
-> are the remaining gaps. See the [roadmap](docs/roadmap.md).
+> dashboard, queue/scheduler, browser take-over on Chromium, Edge, and Firefox,
+> media handling, a robots-aware CLI grabber, batch import, packaging, and
+> diagnostics (`downpour doctor`). Signed/notarized builds, a live update
+> channel, the Safari extension, and the Bengali translation are the remaining
+> gaps. See the [roadmap](docs/roadmap.md).
 >
-> **Latest release:** [v0.1.2](https://github.com/yash244466666/downpour/releases/tag/v0.1.2)
+> **Latest release:** [v0.2.0](https://github.com/yash244466666/downpour/releases/tag/v0.2.0)
 
 ## Why Downpour
 
@@ -57,7 +58,7 @@ traditionally Windows-only, closed-source, and visually dated. Downpour is:
 - **Media handling**: HLS manifests download with the built-in fallback
   (quality = highest variant, AES-128 supported, SAMPLE-AES refused); yt-dlp is
   detected and used when available, with cookies passed via a 0600 file.
-- **Browser take-over (Chromium/Edge)**: the extension hands downloads,
+- **Browser take-over (Chromium, Edge, Firefox)**: the extension hands downloads,
   cookies, referer, and user agent to the engine via the native-messaging host,
   and remembers manifest URLs for a "Download media" menu.
 - **Local IPC** over a Unix socket / Windows named pipe with a per-start token.
@@ -145,7 +146,7 @@ crash-safety rules, IPC security, and platform notes.
 | Persistence | SQLite via rusqlite 0.40 (`bundled`), WAL, STRICT tables |
 | Desktop | Tauri 2.11, WebView2/WKWebView/WebKitGTK |
 | UI | React 19, TypeScript 7, Vite 8, Tailwind CSS 4, lucide-react |
-| Browser | WXT (planned), MV3 Chromium + Firefox |
+| Browser | MV3 Chromium, Edge, and Firefox (Safari not shipped) |
 | Media | yt-dlp (optional, checksum-verified), ffmpeg (detected only) |
 
 ## Getting started
@@ -300,6 +301,10 @@ redirects, auth failures, and traversal filenames.
 
 ## Releases
 
+- **v0.2.0** (2026-10-31) — Firefox download take-over; shared extension source
+  tree with per-browser builds; extension packages attached to the same GitHub
+  release; host/extension protocol compatibility gate; `doctor` and native-host
+  registration cover Firefox.
 - **v0.1.2** (2026-10-31) — AppImage file-manager fix; bulk batch import through
   the scheduler; immediate list rows; hidden-filter hints; clear finished;
   delete-file choice; sidebar shows Categories only; 2000-row list.
@@ -315,7 +320,7 @@ redirects, auth failures, and traversal filenames.
 | M2 | Multi-connection, dynamic segmentation, throttling, retries, crash tests | ✅ |
 | M3 | Full UI wired to engine, tray, notifications, settings | ✅ |
 | M4 | Queue, scheduler, categories, autostart, single-instance | ✅ |
-| M5 | IPC server/client, native host, Chromium/Edge extension | ✅ |
+| M5 | IPC server/client, native host, Chromium/Edge and Firefox extension | ✅ |
 | M6 | yt-dlp, media detection, HLS fallback | ✅ |
 | M7 | Site grabber, batch import | ✅ |
 | M8 | Packaging, signing, notarization, release CI | ✅ |

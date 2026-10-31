@@ -71,7 +71,7 @@ wraps successful responses with two top-level fields:
 {
   "result": { "...": "engine result" },
   "extension_protocol": 1,
-  "host_version": "0.1.2"
+  "host_version": "0.2.0"
 }
 ```
 

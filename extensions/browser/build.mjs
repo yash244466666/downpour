@@ -88,7 +88,7 @@ function validateShared() {
   }
 }
 
-function validateManifest(name, manifest, extensionVersion) {
+function validateManifest(name, manifest) {
   if (manifest.manifest_version !== 3) {
     fail(`${name}: manifest_version must be 3`);
   }
@@ -124,11 +124,13 @@ function validateManifest(name, manifest, extensionVersion) {
     if (!geckoId) fail("firefox: browser_specific_settings.gecko.id is required");
     const cli = readFileSync(CLI_SOURCE, "utf8");
     const constant = cli.match(/const FIREFOX_EXTENSION_ID: &str = "([^"]+)";/);
-    if (constant && constant[1] !== geckoId) {
+    if (!constant) {
+      fail("firefox: cannot find FIREFOX_EXTENSION_ID in the CLI");
+    }
+    if (constant[1] !== geckoId) {
       fail(`firefox: gecko id ${geckoId} does not match the CLI constant ${constant[1]}`);
     }
   }
-
 }
 
 function checkSyntax(files) {
@@ -193,7 +195,7 @@ function main() {
   const manifests = {};
   for (const name of browsers) {
     manifests[name] = readJson(join(HERE, name, "manifest.json"));
-    if (options.check) validateManifest(name, manifests[name], extensionVersion);
+    if (options.check) validateManifest(name, manifests[name]);
   }
 
   if (options.check) {

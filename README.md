@@ -283,11 +283,11 @@ redirects, auth failures, and traversal filenames.
 
 ## Branching and releases
 
-- **`dev` is the default branch.** Feature branches (`feat/…`, `fix/…`) branch
-  from it and open PRs back into it.
-- **`main` is release-only and pulls from `dev`.** Local `main` is configured to
-  track `origin/dev`, so `git pull` on `main` brings the latest integration
-  state. Releases are tagged on `main`.
+- **`main` is the default and release branch.** It mirrors `dev` at release
+  points; tagged releases live here.
+- **`dev` is the integration branch.** Feature branches (`feat/…`, `fix/…`)
+  branch from `dev` and open PRs back into it. Local `main` tracks `origin/dev`,
+  so `git pull` on `main` brings the latest integration state before a release.
 - **`dev` and `main` are protected:** changes land through pull requests;
   direct pushes, force pushes, and branch deletion are blocked. Only the
   repository owner can merge, and `main` mirrors `dev` at release time.

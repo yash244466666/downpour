@@ -10,11 +10,13 @@ const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 export function SettingsDialog({
   settings,
   mediaTools,
+  preview,
   onClose,
   onSave,
 }: {
   settings: Settings;
   mediaTools: MediaTools | null;
+  preview: boolean;
   onClose: () => void;
   onSave: (settings: Settings) => void;
 }) {
@@ -41,6 +43,10 @@ export function SettingsDialog({
   const [checkingUpdates, setCheckingUpdates] = useState(false);
 
   async function checkUpdates() {
+    if (preview) {
+      setUpdateMessage("Update checks run in the desktop app.");
+      return;
+    }
     setCheckingUpdates(true);
     try {
       const status = await engine.checkForUpdates();
@@ -330,7 +336,7 @@ export function SettingsDialog({
               <div className="text-[12px] font-medium">Updates</div>
               <div className="text-[10px] text-muted">
                 {updateMessage ??
-                  "Update checks need a signed release channel."}
+                  "Checks the latest published release."}
               </div>
             </div>
             <button

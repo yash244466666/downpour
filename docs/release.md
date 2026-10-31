@@ -73,7 +73,10 @@ your `signCommand` and certificate, or sign the NSIS output in a release step.
 ## Updater
 
 The updater plugin is compiled in and the Settings dialog can call
-`check_for_updates`, but no update channel is configured. To enable it:
+`check_for_updates`, but no update channel is configured. Without one, the
+command falls back to the public GitHub releases feed (`releases/latest`) and
+reports whether a newer version exists; it does not download or install the
+update. To enable in-app updates:
 
 1. Generate a key pair:
 

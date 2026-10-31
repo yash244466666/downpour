@@ -55,7 +55,7 @@ export function Sidebar({
           <div className="text-[11px] text-muted">Download manager</div>
         </div>
         <span className="ml-auto rounded-full border border-line px-2 py-0.5 text-[10px] text-muted">
-          v0.1
+          v{__APP_VERSION__}
         </span>
       </div>
 

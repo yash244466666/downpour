@@ -1,7 +1,7 @@
 # CLAUDE.md — Downpour
 
 > Project context for Claude Code. Read this before changing anything.
-> Last updated: 2026-10-31 (M9 complete).
+> Last updated: 2026-10-31 (v0.1.2 released).
 
 ## 1. What this is
 
@@ -10,14 +10,15 @@ manager in the IDM class: 1–32 parallel connections per file, crash-safe resum
 queues, scheduler, bandwidth throttling, browser download take-over, media
 grabbing (HLS/DASH/yt-dlp), and a site grabber — wrapped in a modern dashboard.
 
-**Current status: M9 complete.** All v1 milestones are delivered except the
-documented gaps: signed/notarized releases, a configured update channel,
-managed yt-dlp download, quality selection, Firefox/Safari extensions, the
-grabber UI, and Bengali localization. Do not describe those as shipped.
+**Current status: v0.1.2 released.** All v1 milestones (M0–M9) are delivered
+except the documented gaps: signed/notarized releases, a configured update
+channel, managed yt-dlp download, quality selection, Firefox/Safari
+extensions, the grabber UI, and Bengali localization. The repo is public;
+`main` is the default/release branch and `dev` is integration.
 
 | Area | State |
 |---|---|
-| Rust workspace | Compiles; 117 tests pass; clippy `-D warnings` clean |
+| Rust workspace | Compiles; 119 tests pass; clippy `-D warnings` clean |
 | Shared types / IPC contract | DTOs, error codes, framing, handshake types |
 | SQLite schema + migrations | Initial schema, WAL, STRICT tables, download queries |
 | Segment planner / filename safety | Planner exists but drives M2; filename hardening live |
@@ -36,6 +37,7 @@ grabber UI, and Bengali localization. Do not describe those as shipped.
 | Media | HLS parser/downloader, AES-128, yt-dlp detection/run; DASH via yt-dlp |
 | Grabber | Robots-aware BFS crawler, batch expansion, persisted job/frontier |
 | Packaging | `.deb` verified locally; release workflow for NSIS/DMG/AppImage |
+| Releases | v0.1.0 and v0.1.2 published; v0.1.1 superseded |
 | Diagnostics | `downpour doctor` (DB, folders, tools, IPC, browser manifests) |
 | Accessibility | Focus rings, reduced motion, labelled controls, dialog autofocus |
 | Signing / updater | Hooks documented; updater plugin wired, unconfigured |
@@ -269,10 +271,10 @@ pnpm --dir apps/desktop build
 - Crash tests use a spawned CLI process + SIGKILL (`taskkill /F` on Windows)
   and compare SHA-256 against the source.
 - UI tests currently stop at typecheck/build; Vitest + Playwright land with M3.
-- Current total: **117 Rust tests** (42 core, 22 engine integration, 1 CLI
-  crash, 6 store, 6 testkit, 4 types, 6 IPC transport/protocol, 11 media,
-  11 grabber + 2 crawl integration, plus native-host units) and **20 frontend
-  tests** (Vitest).
+- Current total: **119 Rust tests** (core engine/planner/probe, engine
+  integration, CLI crash, store, testkit, types, IPC transport/protocol,
+  media, grabber + crawl integration, native host) and **20 frontend tests**
+  (Vitest).
 - Never add a test that downloads from the public internet.
 
 ## 11. Milestones
@@ -347,9 +349,10 @@ reserved), dialogs focus trap, automated axe/CSP hardening.
   merges back via PR. Local `main` tracks `origin/dev`, so `git pull` on `main`
   brings dev's changes before a release. Do not develop on `main`; do not
   force-push either branch.
-- Both `dev` and `main` are protected: PRs only, no force pushes, no deletion.
-  Direct pushes fail for everyone, including the owner; only the owner has the
-  write access needed to merge.
+- The repository is public. Both `dev` and `main` are protected: PRs only, no
+  force pushes, no deletion. Direct pushes fail for everyone, including the
+  owner; the owner is the only collaborator, so only they can merge.
+- Releases are tagged on `main`; see `docs/release.md`.
 - Branch names: `feat/<slug>`, `fix/<slug>`, `docs/<slug>`, `chore/<slug>`.
 - Commits: imperative subject, ≤72 chars, body explains why. Include the
   attribution line required by the session.
@@ -406,7 +409,18 @@ the grabber:
   per-host delay by default, filters discovered files through robots too, and
   stores the canonical URL in `grabber_frontier.url_hash` (no hashing).
 - Batch import caps expansion at 500 URLs in the UI and 10,000 in the pattern
-  expander.
+  expander. Batch adds go through `add_downloads` + the scheduler; never start
+  one task per URL.
+- AppImage builds set `LD_LIBRARY_PATH` and toolkit variables to bundled
+  libraries. System helpers (`dbus-send`, `gio`, `xdg-open`) must be spawned
+  with those variables removed; see `system_command` / `reveal_in_file_manager`.
+- Release uploads must include only installers and staged binaries: uploading
+  the whole bundle directory ships the AppImage's internal libraries.
+- The updater plugin is registered only when `plugins.updater` exists; do not
+  add the config without a valid pubkey.
+- `Engine::remove(id, delete_file)` deletes the completed file only when asked;
+  the temp file is always removed. `clear_finished` removes finished rows but
+  never touches files.
 - The desktop scheduler ticks every 1.5 s, starts **queued** downloads only
   (never paused ones) within concurrency/per-host limits, and pauses running
   transfers outside the schedule window. Do not auto-start paused rows; that

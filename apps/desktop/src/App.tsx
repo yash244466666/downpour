@@ -488,6 +488,7 @@ export default function App() {
         <SettingsDialog
           settings={settings}
           mediaTools={mediaTools}
+          preview={preview}
           onClose={() => setSettingsOpen(false)}
           onSave={(next) => void saveSettings(next)}
         />

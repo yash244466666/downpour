@@ -31,3 +31,6 @@ apps/desktop/src-tauri/gen/schemas/*.json
 .env
 .env.*
 !.env.example
+
+# Local Claude Code settings
+.claude/settings.local.json

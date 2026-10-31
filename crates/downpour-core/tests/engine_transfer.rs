@@ -567,7 +567,9 @@ async fn segmented_transfer_pauses_and_resumes() {
     let id = add_with(
         &mut engine,
         temp.path(),
-        server.url(&format!("/slow/{size}/64/3")),
+        // Slow enough that the pause lands well before completion on fast
+        // runners; 16 KiB chunks at 10 ms keep the test deterministic.
+        server.url(&format!("/slow/{size}/16/10")),
         Some(4),
         None,
     );

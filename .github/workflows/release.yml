@@ -80,17 +80,39 @@ jobs:
       - name: Build installers
         run: pnpm --dir apps/desktop tauri build ${{ matrix.args }}
 
+      # Only installers and renamed binaries: uploading the whole bundle
+      # directory also ships the AppImage's internal shared libraries.
+      - name: Stage release binaries
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")
+          mkdir -p staging
+          case "${{ matrix.name }}" in
+            windows)
+              cp target/release/downpour.exe "staging/downpour-${VERSION}-windows-x86_64.exe"
+              cp target/release/downpour-nm-host.exe "staging/downpour-nm-host-${VERSION}-windows-x86_64.exe"
+              ;;
+            macos)
+              cp target/release/downpour "staging/downpour-${VERSION}-macos-arm64"
+              cp target/release/downpour-nm-host "staging/downpour-nm-host-${VERSION}-macos-arm64"
+              ;;
+            *)
+              cp target/release/downpour "staging/downpour-${VERSION}-linux-x86_64"
+              cp target/release/downpour-nm-host "staging/downpour-nm-host-${VERSION}-linux-x86_64"
+              ;;
+          esac
+
       - name: Collect artifacts
         uses: actions/upload-artifact@v4
         with:
           name: downpour-${{ matrix.name }}
           if-no-files-found: error
           path: |
-            target/**/release/bundle/**
-            target/release/downpour
-            target/release/downpour.exe
-            target/release/downpour-nm-host
-            target/release/downpour-nm-host.exe
+            target/**/release/bundle/deb/*.deb
+            target/**/release/bundle/appimage/*.AppImage
+            target/**/release/bundle/nsis/*.exe
+            target/**/release/bundle/dmg/*.dmg
+            staging/*
 
   publish:
     name: Draft release

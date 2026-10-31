@@ -11,6 +11,25 @@ The `Release` workflow builds on Ubuntu, Windows, and macOS (universal), and
 opens a **draft** GitHub release with the installers plus `downpour` and
 `downpour-nm-host` binaries.
 
+## Version bumps
+
+Bump the version in all four places before tagging:
+
+- `Cargo.toml` (`[workspace.package] version`)
+- `apps/desktop/src-tauri/tauri.conf.json`
+- `package.json`
+- `apps/desktop/package.json`
+
+Then run `cargo check --workspace` to refresh `Cargo.lock`.
+
+## Artifact rules
+
+The release workflow uploads **only** installers (`.deb`, `.AppImage`, NSIS
+`.exe`, `.dmg`) and the staged `downpour` / `downpour-nm-host` binaries. Never
+upload the whole `bundle/` directory: the AppImage `AppDir` contains hundreds of
+runtime shared libraries, which previously polluted a release and failed the
+upload step.
+
 ## Local build
 
 ```bash
@@ -83,6 +102,14 @@ installers. After installing:
 - Run `downpour register-browsers` once per user.
 - AppImage mounts at a new path each launch, so copy the host to
   `~/.local/share/downpour/bin/` before registering.
+
+## Release history
+
+- **v0.1.2** (2026-10-31) — file-manager reveal fix for AppImages; bulk batch
+  through the scheduler; immediate list rows; hidden-filter hints; clear
+  finished; delete-file choice; categories-only sidebar; 2000-row list.
+- **v0.1.0** (2026-10-31) — first release.
+- v0.1.1 was tagged but superseded before publication.
 
 ## Release checklist
 

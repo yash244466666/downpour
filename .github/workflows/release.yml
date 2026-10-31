@@ -86,7 +86,7 @@ jobs:
           name: downpour-${{ matrix.name }}
           if-no-files-found: error
           path: |
-            apps/desktop/src-tauri/target/**/release/bundle/**
+            target/**/release/bundle/**
             target/release/downpour
             target/release/downpour.exe
             target/release/downpour-nm-host

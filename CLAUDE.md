@@ -428,9 +428,11 @@ the grabber:
 - Release uploads must include only installers and staged binaries: uploading
   the whole bundle directory ships the AppImage's internal libraries.
 - The updater plugin is registered only when `plugins.updater` exists; do not
-  add the config without a valid pubkey. Without it, `check_for_updates` falls
-  back to the public GitHub releases API and only reports a newer version; it
-  never downloads or installs one.
+  add the config without a valid pubkey. Check that key before calling
+  `app.updater()`: its state lookup panics when the plugin is absent, which
+  leaves the IPC command without a response. Without it, `check_for_updates`
+  falls back to the public GitHub releases API and only reports a newer
+  version; it never downloads or installs one.
 - `Engine::remove(id, delete_file)` deletes the completed file only when asked;
   the temp file is always removed. `clear_finished` removes finished rows but
   never touches files.

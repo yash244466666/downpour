@@ -249,26 +249,28 @@ const UPDATE_CHECK_TIMEOUT: Duration = Duration::from_secs(10);
 async fn check_for_updates(app: AppHandle) -> UpdateStatus {
     use tauri_plugin_updater::UpdaterExt;
 
-    // A configured signed channel is authoritative. Without one (or when it
-    // fails), fall back to the public releases feed so "Check now" still
-    // reports whether a newer release exists.
-    if let Ok(updater) = app.updater() {
-        match updater.check().await {
-            Ok(Some(update)) => {
-                return UpdateStatus {
-                    configured: true,
-                    version: Some(update.version.clone()),
-                    message: format!("Version {} is available.", update.version),
-                };
+    // `app.updater()` panics when the plugin is not registered, so check the
+    // config first. A configured signed channel is authoritative; without one
+    // (or when it fails), fall back to the public releases feed.
+    if app.config().plugins.0.contains_key("updater") {
+        if let Ok(updater) = app.updater() {
+            match updater.check().await {
+                Ok(Some(update)) => {
+                    return UpdateStatus {
+                        configured: true,
+                        version: Some(update.version.clone()),
+                        message: format!("Version {} is available.", update.version),
+                    };
+                }
+                Ok(None) => {
+                    return UpdateStatus {
+                        configured: true,
+                        version: None,
+                        message: "You are on the latest version.".to_owned(),
+                    };
+                }
+                Err(_) => {}
             }
-            Ok(None) => {
-                return UpdateStatus {
-                    configured: true,
-                    version: None,
-                    message: "You are on the latest version.".to_owned(),
-                };
-            }
-            Err(_) => {}
         }
     }
 

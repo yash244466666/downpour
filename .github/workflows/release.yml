@@ -64,6 +64,34 @@ jobs:
       - name: Build CLI and native host
         run: cargo build --release -p downpour-cli -p downpour-nm-host
 
+      # Tauri only bundles sidecars whose file name carries the target triple,
+      # and the release config is opt-in so a source checkout without a built
+      # host still runs `pnpm tauri dev`/`tauri build`.
+      - name: Stage native messaging sidecar
+        shell: bash
+        run: |
+          mkdir -p apps/desktop/src-tauri/binaries
+          case "${{ matrix.name }}" in
+            windows)
+              cp target/release/downpour-nm-host.exe \
+                apps/desktop/src-tauri/binaries/downpour-nm-host-x86_64-pc-windows-msvc.exe
+              ;;
+            macos)
+              # Tauri expects a universal sidecar for a universal app build;
+              # lipo the per-arch hosts into one binary.
+              cargo build --release --target aarch64-apple-darwin -p downpour-nm-host
+              cargo build --release --target x86_64-apple-darwin -p downpour-nm-host
+              lipo -create \
+                target/aarch64-apple-darwin/release/downpour-nm-host \
+                target/x86_64-apple-darwin/release/downpour-nm-host \
+                -output apps/desktop/src-tauri/binaries/downpour-nm-host-universal-apple-darwin
+              ;;
+            *)
+              cp target/release/downpour-nm-host \
+                apps/desktop/src-tauri/binaries/downpour-nm-host-x86_64-unknown-linux-gnu
+              ;;
+          esac
+
       # Signing: provide the maintainer credentials as repository secrets and
       # uncomment the env block below. Empty secrets must not be passed, or
       # Tauri tries to import an empty certificate.
@@ -78,7 +106,10 @@ jobs:
       #   TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
       - name: Build installers
-        run: pnpm --dir apps/desktop tauri build ${{ matrix.args }}
+        shell: bash
+        run: >-
+          pnpm --dir apps/desktop tauri build ${{ matrix.args }}
+          --config "$GITHUB_WORKSPACE/apps/desktop/src-tauri/tauri.release.conf.json"
 
       # Only installers and renamed binaries: uploading the whole bundle
       # directory also ships the AppImage's internal shared libraries.

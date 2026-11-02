@@ -77,13 +77,17 @@ jobs:
                 apps/desktop/src-tauri/binaries/downpour-nm-host-x86_64-pc-windows-msvc.exe
               ;;
             macos)
-              # Tauri expects a universal sidecar for a universal app build;
-              # lipo the per-arch hosts into one binary.
+              # Tauri resolves the sidecar per target while building each
+              # architecture, and again for the merged app; stage all three.
               cargo build --release --target aarch64-apple-darwin -p downpour-nm-host
               cargo build --release --target x86_64-apple-darwin -p downpour-nm-host
+              cp target/aarch64-apple-darwin/release/downpour-nm-host \
+                apps/desktop/src-tauri/binaries/downpour-nm-host-aarch64-apple-darwin
+              cp target/x86_64-apple-darwin/release/downpour-nm-host \
+                apps/desktop/src-tauri/binaries/downpour-nm-host-x86_64-apple-darwin
               lipo -create \
-                target/aarch64-apple-darwin/release/downpour-nm-host \
-                target/x86_64-apple-darwin/release/downpour-nm-host \
+                apps/desktop/src-tauri/binaries/downpour-nm-host-aarch64-apple-darwin \
+                apps/desktop/src-tauri/binaries/downpour-nm-host-x86_64-apple-darwin \
                 -output apps/desktop/src-tauri/binaries/downpour-nm-host-universal-apple-darwin
               ;;
             *)

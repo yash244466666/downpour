@@ -126,6 +126,10 @@ including the Windows registry values.
 
 ## Release history
 
+- **v0.3.4** (2026-11-02) — browser take-over works on Windows: registration is
+  per user under `HKCU`, the installer bundles the native host as a sidecar,
+  the app registers it on every start, and `doctor` reports Windows
+  registration.
 - **v0.3.3** (2026-11-01) — copy download link button on every row; copies the
   exact source URL and confirms with a toast.
 - **v0.3.2** (2026-10-31) — fix Check now hanging on “Checking…” when the

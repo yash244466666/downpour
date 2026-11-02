@@ -25,7 +25,7 @@ const REPO_ROOT = resolve(HERE, "../..");
 const DIST = join(HERE, "dist");
 const SHARED = ["lib.js", "background.js"];
 const TAURI_CONF = join(REPO_ROOT, "apps/desktop/src-tauri/tauri.conf.json");
-const CLI_SOURCE = join(REPO_ROOT, "apps/cli/src/main.rs");
+const BROWSER_HOST_SOURCE = join(REPO_ROOT, "crates/downpour-core/src/browser_host.rs");
 
 function fail(message) {
   console.error(`error: ${message}`);
@@ -122,13 +122,13 @@ function validateManifest(name, manifest) {
     }
     const geckoId = manifest.browser_specific_settings?.gecko?.id;
     if (!geckoId) fail("firefox: browser_specific_settings.gecko.id is required");
-    const cli = readFileSync(CLI_SOURCE, "utf8");
-    const constant = cli.match(/const FIREFOX_EXTENSION_ID: &str = "([^"]+)";/);
+    const host = readFileSync(BROWSER_HOST_SOURCE, "utf8");
+    const constant = host.match(/const FIREFOX_EXTENSION_ID: &str = "([^"]+)";/);
     if (!constant) {
-      fail("firefox: cannot find FIREFOX_EXTENSION_ID in the CLI");
+      fail("firefox: cannot find FIREFOX_EXTENSION_ID in downpour-core");
     }
     if (constant[1] !== geckoId) {
-      fail(`firefox: gecko id ${geckoId} does not match the CLI constant ${constant[1]}`);
+      fail(`firefox: gecko id ${geckoId} does not match the core constant ${constant[1]}`);
     }
   }
 }

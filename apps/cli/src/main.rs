@@ -5,11 +5,12 @@
 //! today Ctrl-C pauses a foreground download and `downpour run <id>` resumes it.
 
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::str::FromStr;
 
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand};
+use downpour_core::browser_host;
 use downpour_core::{CancelToken, Engine, EngineConfig, ProgressSample, ProgressSink, RunOutcome};
 use downpour_store::downloads::DownloadRecord;
 use downpour_types::{AddDownloadRequest, DownloadId, DownloadSource, DownloadState};
@@ -179,116 +180,20 @@ async fn run(cli: Cli) -> Result<()> {
     }
 }
 
-/// Open the engine. Only commands that will run transfers recover interrupted
-/// rows; listing or pausing must not flip a download owned by another process.
-const NM_HOST_NAME: &str = "com.downpour.nm";
-/// Stable Chromium extension ID derived from the public key shipped in
-/// `extensions/browser/chromium/manifest.json`.
-const CHROME_EXTENSION_ID: &str = "lelbkegljeljlebagmalnnocmcmgpdjg";
-/// Stable Firefox add-on id; must match `extensions/browser/firefox/manifest.json`.
-const FIREFOX_EXTENSION_ID: &str = "downpour@yash244466666.github.io";
-
-fn chromium_host_manifest(host: &Path) -> serde_json::Value {
-    serde_json::json!({
-        "name": NM_HOST_NAME,
-        "description": "Downpour native messaging host",
-        "path": host.to_string_lossy(),
-        "type": "stdio",
-        "allowed_origins": [format!("chrome-extension://{CHROME_EXTENSION_ID}/")],
-    })
-}
-
-fn firefox_host_manifest(host: &Path) -> serde_json::Value {
-    serde_json::json!({
-        "name": NM_HOST_NAME,
-        "description": "Downpour native messaging host",
-        "path": host.to_string_lossy(),
-        "type": "stdio",
-        "allowed_extensions": [FIREFOX_EXTENSION_ID],
-    })
-}
-
+/// Register the native-messaging manifests with every installed browser.
 fn register_browsers() -> Result<()> {
     let host = locate_native_host()?;
-    let chromium = serde_json::to_vec_pretty(&chromium_host_manifest(&host))?;
-    let firefox = serde_json::to_vec_pretty(&firefox_host_manifest(&host))?;
+    let report = browser_host::register(&host)?;
 
-    #[cfg(not(windows))]
-    {
-        let mut written = 0_usize;
-        for base in browser_config_dirs() {
-            if !base.exists() {
-                continue;
-            }
-            let dir = base.join("NativeMessagingHosts");
-            std::fs::create_dir_all(&dir)?;
-            let path = dir.join(format!("{NM_HOST_NAME}.json"));
-            std::fs::write(&path, &chromium)?;
-            println!("wrote {}", path.display());
-            written += 1;
-        }
-        for dir in firefox_manifest_dirs() {
-            if !dir.parent().is_some_and(Path::exists) {
-                continue;
-            }
-            std::fs::create_dir_all(&dir)?;
-            let path = dir.join(format!("{NM_HOST_NAME}.json"));
-            std::fs::write(&path, &firefox)?;
-            println!("wrote {}", path.display());
-            written += 1;
-        }
-        if written == 0 {
-            bail!(
-                "no supported browser profile found; install Chrome, Chromium, Edge, \
-                 Brave, or Firefox and retry"
-            );
-        }
+    for path in &report.written {
+        println!("wrote {}", path.display());
     }
-
-    #[cfg(windows)]
-    {
-        let manifest_dir = downpour_core::paths::data_dir().join("native-messaging");
-        std::fs::create_dir_all(&manifest_dir)?;
-        let path = manifest_dir.join(format!("{NM_HOST_NAME}.json"));
-        std::fs::write(&path, &chromium)?;
-        for key in [
-            r"Software\Google\Chrome\NativeMessagingHosts\com.downpour.nm",
-            r"Software\Chromium\NativeMessagingHosts\com.downpour.nm",
-            r"Software\Microsoft\Edge\NativeMessagingHosts\com.downpour.nm",
-            r"Software\BraveSoftware\Brave-Browser\NativeMessagingHosts\com.downpour.nm",
-        ] {
-            let status = std::process::Command::new("reg")
-                .args(["add", key, "/ve", "/t", "REG_SZ", "/d"])
-                .arg(&path)
-                .arg("/f")
-                .status()?;
-            if !status.success() {
-                eprintln!("could not register {key}");
-            }
-        }
-
-        let firefox_dir = windows_firefox_manifest_dir()?;
-        std::fs::create_dir_all(&firefox_dir)?;
-        let firefox_path = firefox_dir.join(format!("{NM_HOST_NAME}.json"));
-        std::fs::write(&firefox_path, &firefox)?;
-        let status = std::process::Command::new("reg")
-            .args([
-                "add",
-                r"Software\Mozilla\NativeMessagingHosts\com.downpour.nm",
-                "/ve",
-                "/t",
-                "REG_SZ",
-                "/d",
-            ])
-            .arg(&firefox_path)
-            .arg("/f")
-            .status()?;
-        if !status.success() {
-            eprintln!("could not register the Firefox native messaging host");
-        }
-        println!("registered native messaging host for Chromium browsers and Firefox");
+    for failure in &report.failures {
+        eprintln!("warning: {failure}");
     }
-
+    if report.is_empty() {
+        bail!("the native messaging host was not registered with any browser");
+    }
     Ok(())
 }
 
@@ -305,75 +210,13 @@ fn locate_native_host() -> Result<PathBuf> {
     }
 
     let executable = std::env::current_exe().context("locate the CLI binary")?;
-    let name = if cfg!(windows) {
-        "downpour-nm-host.exe"
-    } else {
-        "downpour-nm-host"
-    };
-    if let Some(directory) = executable.parent() {
-        let candidate = directory.join(name);
-        if candidate.is_file() {
-            return Ok(candidate);
-        }
+    if let Some(candidate) = browser_host::find_host_near(&executable) {
+        return Ok(candidate);
     }
-    bail!("cannot find {name}; build the workspace or set DOWNPOUR_NM_HOST")
-}
-
-#[cfg(not(windows))]
-fn browser_config_dirs() -> Vec<PathBuf> {
-    let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
-        return Vec::new();
-    };
-    browser_config_dirs_for(&home)
-}
-
-#[cfg(not(windows))]
-fn browser_config_dirs_for(home: &Path) -> Vec<PathBuf> {
-    if cfg!(target_os = "macos") {
-        let base = home.join("Library/Application Support");
-        vec![
-            base.join("Google/Chrome"),
-            base.join("Chromium"),
-            base.join("Microsoft Edge"),
-            base.join("BraveSoftware/Brave-Browser"),
-        ]
-    } else {
-        let config = std::env::var_os("XDG_CONFIG_HOME")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| home.join(".config"));
-        vec![
-            config.join("google-chrome"),
-            config.join("chromium"),
-            config.join("microsoft-edge"),
-            config.join("BraveSoftware/Brave-Browser"),
-        ]
-    }
-}
-
-#[cfg(not(windows))]
-fn firefox_manifest_dirs() -> Vec<PathBuf> {
-    let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
-        return Vec::new();
-    };
-    firefox_manifest_dirs_for(&home)
-}
-
-/// Firefox reads native-messaging manifests from a fixed per-user directory.
-#[cfg(not(windows))]
-fn firefox_manifest_dirs_for(home: &Path) -> Vec<PathBuf> {
-    if cfg!(target_os = "macos") {
-        vec![home.join("Library/Application Support/Mozilla/NativeMessagingHosts")]
-    } else {
-        vec![home.join(".mozilla/native-messaging-hosts")]
-    }
-}
-
-#[cfg(windows)]
-fn windows_firefox_manifest_dir() -> Result<PathBuf> {
-    let appdata = std::env::var_os("APPDATA").context("APPDATA is not set")?;
-    Ok(PathBuf::from(appdata)
-        .join("Mozilla")
-        .join("NativeMessagingHosts"))
+    bail!(
+        "cannot find {}; build the workspace or set DOWNPOUR_NM_HOST",
+        browser_host::host_binary_name()
+    )
 }
 
 async fn doctor(db: &Option<PathBuf>, dir: &Option<PathBuf>) -> Result<()> {
@@ -481,33 +324,41 @@ async fn doctor(db: &Option<PathBuf>, dir: &Option<PathBuf>) -> Result<()> {
     }
 
     // Browser registration.
-    #[cfg(not(windows))]
-    {
-        let mut registered = 0_usize;
-        for base in browser_config_dirs() {
-            let path = base
-                .join("NativeMessagingHosts")
-                .join(format!("{NM_HOST_NAME}.json"));
-            if !path.is_file() {
-                continue;
-            }
-            registered += 1;
-            report_browser_manifest(&path);
+    let mut registered = 0_usize;
+    for entry in browser_host::inspect() {
+        let Some(manifest) = entry.manifest else {
+            continue;
+        };
+        if !manifest.is_file() {
+            continue;
         }
-        for dir in firefox_manifest_dirs() {
-            let path = dir.join(format!("{NM_HOST_NAME}.json"));
-            if !path.is_file() {
-                continue;
-            }
-            registered += 1;
-            report_browser_manifest(&path);
-        }
-        if registered == 0 {
-            report_warn(
+        registered += 1;
+        match entry.host {
+            Some(host) if entry.ok => report(
+                true,
                 "browser manifest",
-                "not registered (run `downpour register-browsers`)",
-            );
+                &format!("{}: {}", entry.browser, host.display()),
+            ),
+            Some(host) => report_warn(
+                "browser manifest",
+                &format!(
+                    "{}: {} points at a missing host: {}",
+                    entry.browser,
+                    manifest.display(),
+                    host.display()
+                ),
+            ),
+            None => report_warn(
+                "browser manifest",
+                &format!("{}: unreadable: {}", entry.browser, manifest.display()),
+            ),
         }
+    }
+    if registered == 0 {
+        report_warn(
+            "browser manifest",
+            "not registered (run `downpour register-browsers`, or start the app)",
+        );
     }
 
     println!();
@@ -521,35 +372,6 @@ async fn doctor(db: &Option<PathBuf>, dir: &Option<PathBuf>) -> Result<()> {
 fn report(ok: bool, label: &str, detail: &str) {
     let mark = if ok { "ok  " } else { "FAIL" };
     println!("  {mark}  {label:<18} {detail}");
-}
-
-#[cfg(not(windows))]
-fn report_browser_manifest(path: &Path) {
-    match std::fs::read_to_string(path)
-        .ok()
-        .and_then(|body| serde_json::from_str::<serde_json::Value>(&body).ok())
-        .and_then(|value| {
-            value
-                .get("path")
-                .and_then(serde_json::Value::as_str)
-                .map(str::to_owned)
-        }) {
-        Some(host) if Path::new(&host).is_file() => {
-            report(
-                true,
-                "browser manifest",
-                &format!("{} -> {host}", path.display()),
-            );
-        }
-        Some(host) => report_warn(
-            "browser manifest",
-            &format!("{} points at a missing host: {host}", path.display()),
-        ),
-        None => report_warn(
-            "browser manifest",
-            &format!("unreadable: {}", path.display()),
-        ),
-    }
 }
 
 fn report_warn(label: &str, detail: &str) {
@@ -674,6 +496,8 @@ async fn grab(
     Ok(())
 }
 
+/// Open the engine. Only commands that will run transfers recover interrupted
+/// rows; listing or pausing must not flip a download owned by another process.
 fn open_engine(db: &Option<PathBuf>, dir: &Option<PathBuf>, recover: bool) -> Result<Engine> {
     let db = db
         .clone()
@@ -976,24 +800,7 @@ fn human_rate(bytes_per_second: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn chromium_manifest_lists_the_pinned_extension() {
-        let manifest = chromium_host_manifest(Path::new("/opt/downpour-nm-host"));
-        assert_eq!(manifest["name"], NM_HOST_NAME);
-        assert_eq!(manifest["type"], "stdio");
-        assert_eq!(
-            manifest["allowed_origins"][0],
-            format!("chrome-extension://{CHROME_EXTENSION_ID}/")
-        );
-    }
-
-    #[test]
-    fn firefox_manifest_uses_allowed_extensions() {
-        let manifest = firefox_host_manifest(Path::new("/opt/downpour-nm-host"));
-        assert_eq!(manifest["allowed_extensions"][0], FIREFOX_EXTENSION_ID);
-        assert!(manifest.get("allowed_origins").is_none());
-    }
+    use std::path::Path;
 
     #[test]
     fn firefox_id_matches_the_extension_manifest() {
@@ -1004,25 +811,23 @@ mod tests {
             serde_json::from_str(&body).expect("parse the Firefox manifest");
         assert_eq!(
             manifest["browser_specific_settings"]["gecko"]["id"],
-            FIREFOX_EXTENSION_ID
+            browser_host::FIREFOX_EXTENSION_ID
         );
     }
 
-    #[cfg(not(windows))]
     #[test]
-    fn firefox_manifest_dir_matches_the_platform() {
-        let dirs = firefox_manifest_dirs_for(Path::new("/home/tester"));
-        assert_eq!(dirs.len(), 1);
-        if cfg!(target_os = "macos") {
-            assert_eq!(
-                dirs[0],
-                Path::new("/home/tester/Library/Application Support/Mozilla/NativeMessagingHosts")
-            );
-        } else {
-            assert_eq!(
-                dirs[0],
-                Path::new("/home/tester/.mozilla/native-messaging-hosts")
-            );
-        }
+    fn chromium_id_matches_the_native_host_origin() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../extensions/browser/chromium/manifest.json");
+        let body = std::fs::read_to_string(path).expect("read the Chromium manifest");
+        let manifest: serde_json::Value =
+            serde_json::from_str(&body).expect("parse the Chromium manifest");
+        assert!(manifest.get("key").is_some(), "the pinned key sets the ID");
+        let id = browser_host::CHROME_EXTENSION_ID;
+        assert_eq!(id.len(), 32);
+        assert!(
+            id.chars().all(|c| ('a'..='p').contains(&c)),
+            "a Chromium extension id only uses a-p: {id}"
+        );
     }
 }

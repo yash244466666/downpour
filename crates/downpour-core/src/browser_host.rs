@@ -177,6 +177,15 @@ pub fn inspect() -> Vec<RegistrationEntry> {
 /// Directories a Chromium browser uses for its profile on Unices.
 #[must_use]
 pub fn browser_config_dirs_for(home: &Path) -> Vec<PathBuf> {
+    browser_config_dirs_with(
+        home,
+        std::env::var_os("XDG_CONFIG_HOME")
+            .map(PathBuf::from)
+            .as_deref(),
+    )
+}
+
+fn browser_config_dirs_with(home: &Path, config_home: Option<&Path>) -> Vec<PathBuf> {
     if cfg!(target_os = "macos") {
         let base = home.join("Library/Application Support");
         vec![
@@ -186,8 +195,8 @@ pub fn browser_config_dirs_for(home: &Path) -> Vec<PathBuf> {
             base.join("BraveSoftware/Brave-Browser"),
         ]
     } else {
-        let config = std::env::var_os("XDG_CONFIG_HOME")
-            .map(PathBuf::from)
+        let config = config_home
+            .map(Path::to_path_buf)
             .unwrap_or_else(|| home.join(".config"));
         vec![
             config.join("google-chrome"),
@@ -395,7 +404,7 @@ mod windows {
 
         let appdata = std::env::var_os("APPDATA")
             .map(PathBuf::from)
-            .unwrap_or_else(|| paths::data_dir());
+            .unwrap_or_else(paths::data_dir);
         let firefox_dir = appdata.join("Mozilla").join("NativeMessagingHosts");
         std::fs::create_dir_all(&firefox_dir)?;
         let firefox_manifest = firefox_dir.join(format!("{NM_HOST_NAME}.json"));
@@ -509,7 +518,7 @@ mod tests {
     #[cfg(not(windows))]
     #[test]
     fn chromium_config_dirs_match_the_platform() {
-        let dirs = browser_config_dirs_for(Path::new("/home/tester"));
+        let dirs = browser_config_dirs_with(Path::new("/home/tester"), None);
         assert_eq!(dirs.len(), 4);
         if cfg!(target_os = "macos") {
             assert_eq!(

@@ -150,6 +150,9 @@ Concurrency across downloads is **not** part of M2; it lands with the queue.
 
 ## Releases
 
+- **v0.3.4** (2026-11-02) — browser take-over works on Windows: per-user
+  `HKCU` registration, the native host bundled as an installer sidecar, and
+  automatic registration on app start.
 - **v0.3.3** (2026-11-01) — copy download link button on every row; copies the
   exact source URL and confirms with a toast.
 - **v0.3.2** (2026-10-31) — fix Check now hanging on “Checking…” when the

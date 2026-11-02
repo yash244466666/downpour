@@ -1,7 +1,7 @@
 # CLAUDE.md — Downpour
 
 > Project context for Claude Code. Read this before changing anything.
-> Last updated: 2026-11-01 (v0.3.3 released).
+> Last updated: 2026-11-02 (v0.3.4 released).
 
 ## 1. What this is
 
@@ -10,7 +10,7 @@ manager in the IDM class: 1–32 parallel connections per file, crash-safe resum
 queues, scheduler, bandwidth throttling, browser download take-over, media
 grabbing (HLS/DASH/yt-dlp), and a site grabber — wrapped in a modern dashboard.
 
-**Current status: v0.3.3 released.** All v1 milestones (M0–M9) are delivered
+**Current status: v0.3.4 released.** All v1 milestones (M0–M9) are delivered
 except the documented gaps: signed/notarized releases, a configured update
 channel, managed yt-dlp download, quality selection, the Safari extension, the
 grabber UI, and Bengali localization. The repo is public;
@@ -33,11 +33,11 @@ grabber UI, and Bengali localization. The repo is public;
 | Desktop UI | **Live** dashboard; settings, tray, notifications, categories |
 | Queue / scheduler | Concurrency + per-host caps, priorities, schedule window |
 | Startup | Autostart toggle and single-instance focus |
-| Frontend tests | 20 Vitest unit tests (formatting, filters, mapping) |
+| Frontend tests | 29 Vitest unit tests (formatting, filters, mapping) |
 | Media | HLS parser/downloader, AES-128, yt-dlp detection/run; DASH via yt-dlp |
 | Grabber | Robots-aware BFS crawler, batch expansion, persisted job/frontier |
 | Packaging | `.deb` verified locally; release workflow for NSIS/DMG/AppImage |
-| Releases | v0.1.0, v0.1.2, v0.2.0, v0.3.0, v0.3.1, v0.3.2, and v0.3.3 published; v0.1.1 superseded |
+| Releases | v0.1.0, v0.1.2, v0.2.0, v0.3.0, v0.3.1, v0.3.2, v0.3.3, and v0.3.4 published; v0.1.1 superseded |
 | Diagnostics | `downpour doctor` (DB, folders, tools, IPC, browser manifests) |
 | Accessibility | Focus rings, reduced motion, labelled controls, dialog autofocus |
 | Signing / updater | Hooks documented; updater plugin wired, unconfigured |
@@ -275,9 +275,9 @@ pnpm --dir apps/desktop build
 - Crash tests use a spawned CLI process + SIGKILL (`taskkill /F` on Windows)
   and compare SHA-256 against the source.
 - UI tests currently stop at typecheck/build; Vitest + Playwright land with M3.
-- Current total: **119 Rust tests** (core engine/planner/probe, engine
+- Current total: **135 Rust tests** (core engine/planner/probe, engine
   integration, CLI crash, store, testkit, types, IPC transport/protocol,
-  media, grabber + crawl integration, native host) and **20 frontend tests**
+  media, grabber + crawl integration, native host) and **29 frontend tests**
   (Vitest).
 - Never add a test that downloads from the public internet.
 

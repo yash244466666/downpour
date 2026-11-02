@@ -398,10 +398,21 @@ the grabber:
   per client; a fresh `BufReader` per frame loses bytes already sent.
 - Browser cookies and handoff headers are ephemeral (in-memory only). Never
   persist them; the SQLite `headers_enc` keyring path is still TODO.
-- The Chromium extension ID (`CHROME_EXTENSION_ID` in the CLI) must match the
-  `key` in `extensions/browser/chromium/manifest.json`; the Firefox add-on ID
-  (`FIREFOX_EXTENSION_ID`) must match the manifest's gecko id. Both are
-  registered by `downpour register-browsers` and are permanent.
+- The Chromium extension ID (`browser_host::CHROME_EXTENSION_ID` in
+  `downpour-core`) must match the `key` in
+  `extensions/browser/chromium/manifest.json`; the Firefox add-on ID
+  (`browser_host::FIREFOX_EXTENSION_ID`) must match the manifest's gecko id.
+  Both are permanent.
+- Browser-host registration lives in `downpour_core::browser_host` and is
+  shared by the CLI, `downpour doctor`, and the desktop app. Windows values must be
+  written under an explicit `HKCU\` root: `reg add` without a root falls back to
+  `HKLM` and fails for an unelevated per-user install. Never register with an
+  absolute path to anything but `%SystemRoot%\System32\reg.exe`.
+- The installer bundles `downpour-nm-host` as a Tauri sidecar through
+  `apps/desktop/src-tauri/tauri.release.conf.json`; the release workflow stages
+  it with the target-triple suffix. Local `tauri dev`/`tauri build` leave that
+  config out, so build `downpour-nm-host` beside the app when testing by hand.
+  The app registers the host on every start.
 - Extension manifests carry the `0.0.0` placeholder in the repository; the
   build stamps the app version. `docs/release.md` lists the four version bumps,
   not six.

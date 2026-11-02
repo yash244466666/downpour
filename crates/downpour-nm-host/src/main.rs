@@ -8,7 +8,7 @@
 //! `add` → `download.add`, `list` → `download.list`, and so on.
 
 use std::io::{self, Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use downpour_ipc::{ClientKind, IpcClient, Request};
@@ -173,20 +173,35 @@ fn launch_desktop_app() {
     }
     if let Ok(executable) = std::env::current_exe() {
         if let Some(directory) = executable.parent() {
-            for name in ["downpour-desktop", "Downpour", "downpour"] {
-                candidates.push(directory.join(name));
-            }
+            candidates.extend(desktop_candidates(directory));
         }
     }
 
     for candidate in candidates {
         if candidate.is_file() {
-            let _ = std::process::Command::new(candidate)
-                .arg("--background")
-                .spawn();
+            let mut command = std::process::Command::new(&candidate);
+            command.arg("--background");
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                // CREATE_NO_WINDOW: never flash a console from a GUI launch.
+                command.creation_flags(0x0800_0000);
+            }
+            let _ = command.spawn();
             return;
         }
     }
+}
+
+/// Installed names of the desktop binary next to the native host.
+///
+/// The `.exe` suffix matters on Windows: `Downpour` is not a file there, so a
+/// suffix-less candidate silently never launches the app.
+fn desktop_candidates(directory: &Path) -> Vec<PathBuf> {
+    ["downpour-desktop", "Downpour", "downpour"]
+        .into_iter()
+        .map(|name| directory.join(format!("{name}{}", std::env::consts::EXE_SUFFIX)))
+        .collect()
 }
 
 fn read_browser_frame<R: Read>(reader: &mut R) -> io::Result<Option<Vec<u8>>> {
@@ -282,5 +297,21 @@ mod tests {
     #[test]
     fn rejects_unknown_invocation_arguments() {
         assert!(validate_invocation_first("--help").is_err());
+    }
+
+    #[test]
+    fn desktop_candidates_use_the_platform_suffix() {
+        let candidates = desktop_candidates(Path::new("/opt/downpour"));
+        assert_eq!(candidates.len(), 3);
+        if cfg!(windows) {
+            assert!(
+                candidates
+                    .iter()
+                    .all(|path| path.extension().is_some_and(|ext| ext == "exe")),
+                "Windows needs the real .exe file names: {candidates:?}"
+            );
+        } else {
+            assert_eq!(candidates[1], Path::new("/opt/downpour/Downpour"));
+        }
     }
 }

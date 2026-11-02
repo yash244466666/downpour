@@ -106,16 +106,30 @@ configured in this build". Do not add `plugins.updater` without a valid
 
 ## Browser native host
 
-The release job uploads `downpour-nm-host` and the `downpour` CLI next to the
-installers. After installing:
+The Windows, macOS, and Linux bundles now include `downpour-nm-host` as a
+Tauri sidecar (`apps/desktop/src-tauri/tauri.release.conf.json`). The app
+registers the host with every installed browser on startup, per user, so an
+installed build needs no manual step. On Windows the registry values live under
+`HKCU\Software\<vendor>\NativeMessagingHosts\com.downpour.nm`; a per-user
+install must never require administrator rights.
 
-- Put `downpour-nm-host` at a stable path (or keep it beside the CLI).
+The release job still uploads `downpour-nm-host` and the `downpour` CLI next to
+the installers for users who prefer the CLI:
+
+- Keep `downpour-nm-host` beside the CLI (or set `DOWNPOUR_NM_HOST`).
 - Run `downpour register-browsers` once per user.
 - AppImage mounts at a new path each launch, so copy the host to
   `~/.local/share/downpour/bin/` before registering.
 
+`downpour doctor` reports each browser's registration on every platform,
+including the Windows registry values.
+
 ## Release history
 
+- **v0.3.4** (2026-11-02) — browser take-over works on Windows: registration is
+  per user under `HKCU`, the installer bundles the native host as a sidecar,
+  the app registers it on every start, and `doctor` reports Windows
+  registration.
 - **v0.3.3** (2026-11-01) — copy download link button on every row; copies the
   exact source URL and confirms with a toast.
 - **v0.3.2** (2026-10-31) — fix Check now hanging on “Checking…” when the

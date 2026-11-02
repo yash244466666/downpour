@@ -47,6 +47,10 @@ node --test extensions/browser/test/*.test.mjs
    the per-user `%APPDATA%\Mozilla\NativeMessagingHosts` plus registry key on
    Windows).
 
+   An installed build does not need this step: the app ships the host as a
+   sidecar and registers it on startup. On Windows the Chromium values are
+   written under `HKCU\Software\<vendor>\NativeMessagingHosts\com.downpour.nm`.
+
 3. Chromium: open `chrome://extensions` (or `edge://extensions`), enable
    Developer mode, choose **Load unpacked**, and select
    `extensions/browser/dist/chromium`.

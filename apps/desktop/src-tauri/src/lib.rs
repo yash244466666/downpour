@@ -59,6 +59,32 @@ fn open_engine(state: &AppState) -> Result<Engine, String> {
     Engine::open_without_recovery(&state.db_path, config).map_err(|error| error.to_string())
 }
 
+/// Register the bundled native-messaging host with every installed browser.
+///
+/// Idempotent and per user. It runs on every start so a browser installed
+/// later is picked up without a manual `register-browsers` call. A failure is
+/// logged, never fatal: browser take-over is optional.
+fn register_browser_host() {
+    let Some(host) = downpour_core::browser_host::find_host() else {
+        tracing::debug!("native messaging host not found beside the app");
+        return;
+    };
+    match downpour_core::browser_host::register(&host) {
+        Ok(report) => {
+            tracing::info!(
+                host = %host.display(),
+                manifests = report.written.len(),
+                failures = report.failures.len(),
+                "browser native-messaging host registered"
+            );
+            for failure in report.failures {
+                tracing::warn!(%failure, "browser registration target failed");
+            }
+        }
+        Err(error) => tracing::warn!(%error, "browser native-messaging registration failed"),
+    }
+}
+
 /// UI-facing shape of a download.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1309,6 +1335,7 @@ pub fn run() {
     builder
         .setup(|app| {
             app.manage(load_state());
+            register_browser_host();
             build_tray(app)?;
 
             let ipc_app = app.handle().clone();

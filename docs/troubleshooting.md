@@ -24,14 +24,36 @@ console (`Ctrl+Shift+I` in dev) for a capability or CSP error.
 ## Browser downloads are not taken over
 
 1. Start Downpour once; the app writes `engine.token` and hosts the IPC socket.
-2. Register the native host: `downpour register-browsers`.
-3. Load `extensions/browser/chromium` unpacked in Chrome/Edge.
+2. Register the native host. The installed app does this on every start; from a
+   source checkout run `downpour register-browsers`.
+3. Load `extensions/browser/dist/chromium` unpacked in Chrome/Edge, or the
+   packaged zip from the release.
 4. Check `chrome://extensions` for the pinned ID
    (`lelbkegljeljlebagmalnnocmcmgpdjg`). If you repacked the extension, its ID
    may differ from the clipboard; regenerate the key or update the CLI constant.
 5. AppImage builds mount at a new path each launch: copy `downpour-nm-host` to
    `~/.local/share/downpour/bin/` and re-run `register-browsers`.
 6. Firefox and Safari are not shipped.
+
+### Windows
+
+The NSIS installer bundles `downpour-nm-host.exe` next to `Downpour.exe`, and
+the app registers it for the current user under
+`HKCU\Software\Google\Chrome\NativeMessagingHosts\com.downpour.nm` (plus
+Chromium, Edge, and Brave). Registration is per user and does not need
+administrator rights.
+
+Check it:
+
+```powershell
+downpour doctor
+reg query "HKCU\Software\Google\Chrome\NativeMessagingHosts\com.downpour.nm" /ve
+```
+
+If the key is missing, run `downpour register-browsers` from the same user
+account that runs Chrome, then reload the extension. Versions before v0.3.4
+wrote the key without an explicit `HKCU` root, which failed for unelevated
+users; update to v0.3.4.
 
 ## `blob:` or `data:` download is ignored
 

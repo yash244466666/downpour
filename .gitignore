@@ -13,6 +13,8 @@ dist-ssr/
 # Tauri
 apps/desktop/src-tauri/target/
 apps/desktop/src-tauri/gen/schemas/*.json
+# Sidecars staged for a release build; never commit the binaries.
+apps/desktop/src-tauri/binaries/
 
 # Editors / OS
 .DS_Store

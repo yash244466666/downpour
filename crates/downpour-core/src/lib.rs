@@ -7,6 +7,7 @@
 //! stream per download. The writer-thread and checkpoint rules are final; the
 //! segmented planner is wired in M2.
 
+pub mod browser_host;
 pub mod cancel;
 pub mod engine;
 pub mod error;
